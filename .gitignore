@@ -1,0 +1,28 @@
+# dependencies
+/node_modules
+
+# Next.js
+/.next
+/out
+
+# local secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Vercel
+.vercel
+
+# tests and system files
+/coverage
+/test-results
+/playwright-report
+
+# exported operational data
+/mowazana_files/system tables/*.csv
+
+.DS_Store
+*.log
+.env*
+!.env.example

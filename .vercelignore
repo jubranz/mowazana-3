@@ -1,0 +1,12 @@
+# Source material and operational integrations are not part of the web bundle.
+mowazana_files/
+wordpress/
+muwazana-bridge.zip
+old_system/
+tests/
+coverage/
+*.md
+.env*
+.DS_Store
+node_modules/
+.next/

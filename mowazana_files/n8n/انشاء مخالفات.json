@@ -1,0 +1,274 @@
+{
+  "name": "انشاء مخالفات",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "penalty",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -128,
+        192
+      ],
+      "id": "fada71f7-8e70-43ac-aea1-77f22c640d25",
+      "name": "Webhook",
+      "webhookId": "7dbbdfa5-ee35-49ae-af70-f2b7bb130a3b"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "qwdcKbN3lVm8A88V",
+          "mode": "list",
+          "cachedResultName": "أعضاء موازنة",
+          "cachedResultUrl": "/projects/MSQNqweKDKFcuZ9l/datatables/qwdcKbN3lVm8A88V"
+        },
+        "filters": {
+          "conditions": []
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        288,
+        192
+      ],
+      "id": "caf19ef4-7d73-435c-a258-5827024038ad",
+      "name": "Get users"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\n// Collect all violator[N] keys dynamically\nconst violators = [];\nlet i = 0;\nwhile (body[`violator[${i}]`] !== undefined) {\n  violators.push(body[`violator[${i}]`]);\n  i++;\n}\n\n// Return one item per violator — this is what drives the loop\nreturn violators.map(id => ({\n  json: {\n    violator_id: id,\n    title: body.title,\n    amount: body.amount,\n    date: body.date,\n    description: body.description,\n    reason: body.reason,\n    image: body.image,\n    tr_status: body.tr_status,\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        112,
+        192
+      ],
+      "id": "84c5084a-874b-4c75-a001-c3b5dc744fbc",
+      "name": "code 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const violations = $items('code 1').map(item => item.json);\nconst users = $items('Get users').map(item => item.json);\n\nreturn violations.map(violation => {\n  const user = users.find(\n    u => String(u.user_id) === String(violation.violator_id)\n  );\n\n  return {\n    json: {\n      ...violation,\n      Name: user?.Name || null,\n      email: user?.email || null,\n      mobile: user?.mobile || null,\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        192
+      ],
+      "id": "1f457be0-3aff-4a1e-b4cd-e2395b2dddf0",
+      "name": "code 2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wbiztool.com/api/v1/send_msg/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $env.WBIZTOOL_CLIENT_ID }}"
+            },
+            {
+              "name": "api_key",
+              "value": "={{ $env.WBIZTOOL_API_KEY }}"
+            },
+            {
+              "name": "whatsapp_client",
+              "value": "={{ $env.WBIZTOOL_WHATSAPP_CLIENT }}"
+            },
+            {
+              "name": "msg_type",
+              "value": "0"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $env.MUWAZANA_ADMIN_WHATSAPP }}"
+            },
+            {
+              "name": "group_name"
+            },
+            {
+              "name": "country_code",
+              "value": "966"
+            },
+            {
+              "name": "msg",
+              "value": "=تم قيد مخالفة:\n\n📌 {{ $('code 2').item.json.title }}\n💰 قيمة المخالفة: {{ $('code 2').item.json.amount }} ريال\n📅 التاريخ: {{ $('code 2').item.json.date }}\n\n\nنأمل منكم مراجعة تفاصيل المخالفة والاطلاع على المرفقات (إن وجدت) من خلال منصة موازنة.\n"
+            },
+            {
+              "name": "img_url"
+            },
+            {
+              "name": "file_url"
+            },
+            {
+              "name": "file_name"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        848,
+        192
+      ],
+      "id": "85e33d4d-775e-4243-90ed-4647c7b0a116",
+      "name": "Wbiztool"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mowazana.novalnk.com/wp-json/jet-cct/jet_cct_penalty",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "cct_author_id",
+              "value": "={{ $json.violator_id }}"
+            },
+            {
+              "name": "amount",
+              "value": "={{ $json.amount }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "name": "reason",
+              "value": "={{ $json.reason }}"
+            },
+            {
+              "name": "image",
+              "value": "={{ $json.image }}"
+            },
+            {
+              "name": "tr_status",
+              "value": "={{ $json.tr_status }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        192
+      ],
+      "id": "74d358a7-d9fb-4658-b64b-d6c601f7f6a4",
+      "name": "ادخال المخالفات",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "b5Wb3qpUKA45vLYu",
+          "name": "موازنة"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "code 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get users": {
+      "main": [
+        [
+          {
+            "node": "code 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code 1": {
+      "main": [
+        [
+          {
+            "node": "Get users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "code 2": {
+      "main": [
+        [
+          {
+            "node": "ادخال المخالفات",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ادخال المخالفات": {
+      "main": [
+        [
+          {
+            "node": "Wbiztool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "twHBwEbgPx0PPDY7",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "c22d8b37-8d57-4136-b2fc-a7d100fcad4f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3bdefb25805f2fef792b4724632db37f66e59b08ae26281bd6ca8db0a41da159"
+  },
+  "nodeGroups": [],
+  "id": "WXi3cdt6hAvZu4BR",
+  "tags": [
+    {
+      "updatedAt": "2026-04-29T15:49:21.482Z",
+      "createdAt": "2026-04-29T15:49:21.482Z",
+      "id": "gynkBKYBVdgaEYom",
+      "name": "موازنة"
+    }
+  ]
+}

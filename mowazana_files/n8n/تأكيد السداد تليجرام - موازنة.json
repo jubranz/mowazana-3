@@ -1,0 +1,182 @@
+{
+  "name": "تأكيد السداد تليجرام - موازنة",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "payment-approve",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "14a936f8-346a-4f6d-881f-93977531e8fe",
+      "name": "Webhook",
+      "webhookId": "816a646b-2a7c-4e19-8a88-e12d86bcb210",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_N8N_HEADER_CREDENTIAL",
+          "name": "Muwazana webhook secret"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $env.MUWAZANA_TELEGRAM_CHAT_ID }}",
+        "message": "=طلب اعتماد سداد من {{ $json.body.data.member.name }}\nالمبلغ: {{ $json.body.data.amount }} ريال\nالنوع: {{ $json.body.data.type === 'loan_payment' ? 'سداد قسط' : 'سداد عام' }}\n{{ $json.body.data.note || '' }}",
+        "approvalOptions": { "values": { "approvalType": "double" } },
+        "options": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [220, 0],
+      "id": "64d2b9f5-68de-41ba-bbbe-1bf5e80c8ed4",
+      "name": "طلب موافقة تليجرام",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL",
+          "name": "Telegram Mowazana bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "0894048c-2ff9-4afb-8dda-84bb7f8cffbe",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [460, 0],
+      "id": "96e1888c-f3fb-4387-9cb8-d66ec4fc8140",
+      "name": "تمت الموافقة؟"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MUWAZANA_WORDPRESS_URL }}/wp-json/muwazana/v1/transactions/{{ $('Webhook').item.json.body.data.type }}/{{ $('Webhook').item.json.body.data.id }}/approve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [710, -90],
+      "id": "b185e5bb-b4f0-4eea-8e59-56be10c522c0",
+      "name": "اعتماد السداد",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_WITH_WORDPRESS_SERVICE_CREDENTIAL",
+          "name": "موازنة - جسر API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MUWAZANA_WORDPRESS_URL }}/wp-json/muwazana/v1/transactions/{{ $('Webhook').item.json.body.data.type }}/{{ $('Webhook').item.json.body.data.id }}/reject",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ reason: 'مرفوض عبر تليجرام' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [710, 100],
+      "id": "3d0d5256-c369-4f98-af6d-061f40673542",
+      "name": "رفض السداد",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_WITH_WORDPRESS_SERVICE_CREDENTIAL",
+          "name": "موازنة - جسر API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wbiztool.com/api/v1/send_msg/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "client_id", "value": "={{ $env.WBIZTOOL_CLIENT_ID }}" },
+            { "name": "whatsapp_client", "value": "={{ $env.WBIZTOOL_WHATSAPP_CLIENT }}" },
+            { "name": "msg_type", "value": "0" },
+            { "name": "phone", "value": "={{ $json.notification.mobile }}" },
+            { "name": "country_code", "value": "966" },
+            { "name": "msg", "value": "=مرحبًا {{ $json.notification.name }}، تم اعتماد سداد مبلغ {{ $('Webhook').item.json.body.data.amount }} ريال في موازنة." },
+            { "name": "api_key", "value": "={{ $env.WBIZTOOL_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [960, -90],
+      "id": "b69d8402-ec6f-4859-b6cb-f98cc757cc3d",
+      "name": "واتساب - اعتماد"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://wbiztool.com/api/v1/send_msg/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "client_id", "value": "={{ $env.WBIZTOOL_CLIENT_ID }}" },
+            { "name": "whatsapp_client", "value": "={{ $env.WBIZTOOL_WHATSAPP_CLIENT }}" },
+            { "name": "msg_type", "value": "0" },
+            { "name": "phone", "value": "={{ $json.notification.mobile }}" },
+            { "name": "country_code", "value": "966" },
+            { "name": "msg", "value": "=مرحبًا {{ $json.notification.name }}، لم يتم اعتماد سداد مبلغ {{ $('Webhook').item.json.body.data.amount }} ريال. راجع العملية في موازنة." },
+            { "name": "api_key", "value": "={{ $env.WBIZTOOL_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [960, 100],
+      "id": "46e72099-bc38-4c20-84a2-80fd5e01a64b",
+      "name": "واتساب - رفض"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": { "main": [[{ "node": "طلب موافقة تليجرام", "type": "main", "index": 0 }]] },
+    "طلب موافقة تليجرام": { "main": [[{ "node": "تمت الموافقة؟", "type": "main", "index": 0 }]] },
+    "تمت الموافقة؟": {
+      "main": [
+        [{ "node": "اعتماد السداد", "type": "main", "index": 0 }],
+        [{ "node": "رفض السداد", "type": "main", "index": 0 }]
+      ]
+    },
+    "اعتماد السداد": { "main": [[{ "node": "واتساب - اعتماد", "type": "main", "index": 0 }]] },
+    "رفض السداد": { "main": [[{ "node": "واتساب - رفض", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1", "binaryMode": "separate", "availableInMCP": false },
+  "versionId": "11e1e71a-ff52-496f-8102-7393c1f5941e",
+  "meta": { "templateCredsSetupCompleted": false },
+  "nodeGroups": [],
+  "tags": []
+}
