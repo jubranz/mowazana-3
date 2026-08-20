@@ -319,6 +319,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .status-rejected, .status-overdue { background: #fbe3df; color: #98453c; }
 .status-partial, .status-active { background: #e3eafd; color: #3e5e9f; }
 .empty-state { min-height: 95px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.transaction-pagination { display: flex; justify-content: center; gap: 7px; margin-top: 14px; direction: rtl; }
+.transaction-pagination button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 11px; background: #fff; color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.transaction-pagination button.active { border-color: var(--green-dark); background: var(--green-dark); color: #fff; }
 
 .bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(calc(100% - 32px), 450px); height: 70px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 7px; background: rgba(255,255,255,.86); border: 1px solid rgba(255,255,255,.95); border-radius: 23px; box-shadow: 0 17px 50px rgba(22,47,40,.16); backdrop-filter: blur(20px); }
 .bottom-nav button { border: 0; background: transparent; border-radius: 17px; display: grid; place-content: center; justify-items: center; gap: 3px; color: var(--muted); font-size: 9px; cursor: pointer; }

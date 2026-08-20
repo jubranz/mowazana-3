@@ -16,11 +16,11 @@ export const demoProfiles: MemberProfile[] = [
 ];
 
 const baseTransactions: FinancialTransaction[] = [
-  { id: 5001, type: "expense", title: "بنزين", amount: 180, date: "2026-08-18", status: "approved", note: "المحطة" },
-  { id: 5002, type: "payment", title: "سداد عام", amount: 500, date: "2026-08-16", status: "approved" },
-  { id: 5003, type: "expense", title: "تسوق", amount: 235, date: "2026-08-15", status: "pending", note: "احتياجات المنزل" },
-  { id: 5004, type: "reward", title: "مكافأة", amount: 100, date: "2026-08-12", status: "approved" },
-  { id: 5005, type: "penalty", title: "مخالفة", amount: 50, date: "2026-08-09", status: "approved" },
+  { id: 5001, type: "expense", title: "بنزين", amount: 180, date: "2026-08-18T18:40:00+03:00", status: "approved", note: "المحطة" },
+  { id: 5002, type: "payment", title: "إيداع عام", amount: 500, date: "2026-08-16T11:25:00+03:00", status: "approved" },
+  { id: 5003, type: "expense", title: "تسوق", amount: 235, date: "2026-08-15T20:10:00+03:00", status: "pending", note: "احتياجات المنزل" },
+  { id: 5004, type: "reward", title: "مكافأة", amount: 100, date: "2026-08-12T09:05:00+03:00", status: "approved" },
+  { id: 5005, type: "penalty", title: "مخالفة", amount: 50, date: "2026-08-09T14:15:00+03:00", status: "approved" },
 ];
 
 type DemoStore = { additions: Record<number, FinancialTransaction[]> };
@@ -87,7 +87,7 @@ export function createDemoExpense(memberId: number, input: CreateExpenseInput): 
     type: "expense",
     title: input.category,
     amount: input.amount,
-    date: input.date ?? new Date().toISOString().slice(0, 10),
+    date: withTransactionTime(input.date),
     status: "pending",
     note: [input.store, input.note].filter(Boolean).join(" — "),
   });
@@ -97,12 +97,17 @@ export function createDemoPayment(memberId: number, input: CreatePaymentInput): 
   return addDemoTransaction(memberId, {
     id: Date.now(),
     type: input.targetType === "installment" ? "loan_payment" : "payment",
-    title: input.targetType === "installment" ? "سداد قسط" : "سداد عام",
+    title: input.targetType === "installment" ? "إيداع قسط" : "إيداع عام",
     amount: input.amount,
-    date: input.date ?? new Date().toISOString().slice(0, 10),
+    date: withTransactionTime(input.date),
     status: "pending",
     note: input.note,
   });
+}
+
+function withTransactionTime(date?: string): string {
+  const selectedDate = date ?? new Date().toISOString().slice(0, 10);
+  return `${selectedDate}T${new Date().toTimeString().slice(0, 8)}+03:00`;
 }
 
 function addDemoTransaction(memberId: number, transaction: FinancialTransaction): FinancialTransaction {

@@ -428,7 +428,7 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     }
 
     $data = [
-        'title' => 'سداد عام',
+        'title' => 'إيداع عام',
         'amount' => number_format($amount, 2, '.', ''),
         'date' => legacy_date($input['date'] ?? ''),
         'note' => sanitize_textarea_field($input['note'] ?? ''),
@@ -775,10 +775,13 @@ function transaction_from_row(array $row, string $type): array
 {
     $status_field = $type === 'loan_payment' ? 'payment_status' : 'tr_status';
     $title = (string) ($row['title'] ?? '');
+    if ($type === 'payment' && in_array($title, ['سداد عام', 'إيداع'], true)) {
+        $title = 'إيداع عام';
+    }
     if (! $title) {
         $title = match ($type) {
-            'payment' => 'سداد عام',
-            'loan_payment' => 'سداد قسط',
+            'payment' => 'إيداع عام',
+            'loan_payment' => 'إيداع قسط',
             'reward' => 'مكافأة',
             'penalty' => 'مخالفة',
             default => 'سحب',
@@ -838,12 +841,37 @@ function amount(mixed $value): float
 
 function row_date(array $row): string
 {
-    foreach (['payment_date', 'date', 'due_date', 'cct_created', 'created_at'] as $key) {
+    $date_value = '';
+    foreach (['payment_date', 'date', 'due_date'] as $key) {
         if (! empty($row[$key])) {
-            return iso_date($row[$key]);
+            $date_value = (string) $row[$key];
+            break;
         }
     }
-    return wp_date('Y-m-d');
+
+    $created_value = $row['cct_created'] ?? $row['created_at'] ?? '';
+    if ($date_value !== '') {
+        $date = iso_date($date_value);
+        if ($created_value !== '') {
+            $created_timestamp = strtotime((string) $created_value);
+            if ($created_timestamp) {
+                $timezone = wp_timezone();
+                $time = wp_date('H:i:s', $created_timestamp, $timezone);
+                $offset = (new \DateTimeImmutable('now', $timezone))->format('P');
+                return "{$date}T{$time}{$offset}";
+            }
+        }
+        return "{$date}T12:00:00";
+    }
+
+    if ($created_value !== '') {
+        $created_timestamp = strtotime((string) $created_value);
+        if ($created_timestamp) {
+            return wp_date('c', $created_timestamp, wp_timezone());
+        }
+    }
+
+    return wp_date('c');
 }
 
 function iso_date(mixed $value): string

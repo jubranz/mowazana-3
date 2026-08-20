@@ -60,6 +60,7 @@ const moneyFormatter = new Intl.NumberFormat("ar-SA", {
 });
 
 const dateFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric" });
+const dateTimeFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh" });
 
 function money(value: number): string {
   return moneyFormatter.format(Math.abs(value));
@@ -72,6 +73,16 @@ function Money({ value, sign }: { value: number; sign?: "+" | "−" }) {
 function prettyDate(value: string): string {
   const date = new Date(value.includes("T") ? value : `${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
+}
+
+function prettyDateTime(value: string): string {
+  const date = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : dateTimeFormatter.format(date);
+}
+
+function transactionTimestamp(value: string): number {
+  const timestamp = Date.parse(value.includes("T") ? value : `${value}T00:00:00`);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
 function todayInRiyadh(): string {
@@ -103,6 +114,8 @@ export function MuwazanaApp() {
   const [demo, setDemo] = useState(false);
   const [offline, setOffline] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [transactionPage, setTransactionPage] = useState(1);
+  const transactionsPerPage = 5;
 
   const loadDashboard = useCallback(async (silent = false) => {
     if (!silent) setBusy(true);
@@ -278,6 +291,14 @@ export function MuwazanaApp() {
 
   if (!dashboard) return <LoadingScreen />;
 
+  const sortedTransactions = [...dashboard.recent].sort((a, b) => transactionTimestamp(b.date) - transactionTimestamp(a.date));
+  const transactionPageCount = Math.max(1, Math.ceil(sortedTransactions.length / transactionsPerPage));
+  const currentTransactionPage = Math.min(transactionPage, transactionPageCount);
+  const visibleTransactions = sortedTransactions.slice(
+    (currentTransactionPage - 1) * transactionsPerPage,
+    currentTransactionPage * transactionsPerPage,
+  );
+
   const owed = dashboard.balance < 0 ? Math.abs(dashboard.balance) : 0;
   const credit = dashboard.balance > 0 ? dashboard.balance : 0;
   const nextInstallment = dashboard.installments
@@ -387,8 +408,15 @@ export function MuwazanaApp() {
       <section className="section-block transactions-section">
         <div className="section-title"><div><span>آخر التحديثات</span><h2>العمليات الأخيرة</h2></div></div>
         <div className="transaction-list">
-          {dashboard.recent.length ? dashboard.recent.map((item) => <TransactionRow item={item} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات بعد" />}
+          {sortedTransactions.length ? visibleTransactions.map((item) => <TransactionRow item={item} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات بعد" />}
         </div>
+        {transactionPageCount > 1 && (
+          <nav className="transaction-pagination" aria-label="صفحات العمليات">
+            {Array.from({ length: transactionPageCount }, (_, index) => index + 1).map((page) => (
+              <button key={page} className={page === currentTransactionPage ? "active" : ""} onClick={() => setTransactionPage(page)} aria-label={`الصفحة ${page}`} aria-current={page === currentTransactionPage ? "page" : undefined}>{page}</button>
+            ))}
+          </nav>
+        )}
       </section>
 
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
@@ -559,7 +587,7 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
   return (
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
-      <div className="transaction-copy"><strong>{item.title || meta.label}</strong><span>{prettyDate(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
+      <div className="transaction-copy"><strong>{item.title || meta.label}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
       <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={item.status} /></div>
     </article>
   );
@@ -574,8 +602,8 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function transactionMeta(type: FinancialTransaction["type"]) {
-  if (type === "payment") return { label: "سداد", icon: <HandCoins size={19} />, tone: "blue" };
-  if (type === "loan_payment") return { label: "سداد قسط", icon: <CalendarClock size={19} />, tone: "green" };
+  if (type === "payment") return { label: "إيداع عام", icon: <HandCoins size={19} />, tone: "blue" };
+  if (type === "loan_payment") return { label: "إيداع قسط", icon: <CalendarClock size={19} />, tone: "green" };
   if (type === "reward") return { label: "مكافأة", icon: <Gift size={19} />, tone: "violet" };
   if (type === "penalty") return { label: "مخالفة", icon: <TriangleAlert size={19} />, tone: "amber" };
   return { label: "سحب", icon: <WalletCards size={19} />, tone: "coral" };
@@ -667,8 +695,8 @@ function TransactionSheet({
           <div className="form-section">
             <label className="field-label">وجهة السداد</label>
             <div className="target-switch">
-              <button className={targetType === "general" ? "selected" : ""} onClick={() => setTargetType("general")}><HandCoins size={19} />سداد عام</button>
-              <button className={targetType === "installment" ? "selected" : ""} onClick={() => setTargetType("installment")} disabled={!dashboard.installments.length}><CalendarClock size={19} />سداد قسط</button>
+              <button className={targetType === "general" ? "selected" : ""} onClick={() => setTargetType("general")}><HandCoins size={19} />إيداع عام</button>
+              <button className={targetType === "installment" ? "selected" : ""} onClick={() => setTargetType("installment")} disabled={!dashboard.installments.length}><CalendarClock size={19} />إيداع قسط</button>
             </div>
             {targetType === "installment" && (
               <label><span>اختر القسط</span><select value={installmentId} onChange={(event) => setInstallmentId(Number(event.target.value))}>{dashboard.installments.filter((item) => !["paid", "cancelled"].includes(item.status)).map((item) => <option value={item.id} key={item.id}>{item.title} — {money(item.remainingAmount)} ﷼</option>)}</select>{selectedInstallment && <small className="field-hint">متبقي <Money value={selectedInstallment.remainingAmount} /> · {prettyDate(selectedInstallment.dueDate)}</small>}</label>

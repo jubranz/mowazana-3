@@ -26,6 +26,7 @@ export interface FinancialTransaction {
   type: TransactionType;
   title: string;
   amount: number;
+  /** ISO date or date-time, including the transaction's creation time when available. */
   date: string;
   status: CanonicalStatus;
   note?: string;
