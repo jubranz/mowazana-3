@@ -587,10 +587,16 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
   return (
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
-      <div className="transaction-copy"><strong>{item.title || meta.label}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
+      <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
       <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={item.status} /></div>
     </article>
   );
+}
+
+function transactionTitle(item: FinancialTransaction, fallback: string): string {
+  if (item.type === "payment" && ["سداد عام", "إيداع"].includes(item.title)) return "إيداع عام";
+  if (item.type === "loan_payment" && item.title === "سداد قسط") return "إيداع قسط";
+  return item.title || fallback;
 }
 
 function StatusBadge({ status }: { status: CanonicalStatus }) {
