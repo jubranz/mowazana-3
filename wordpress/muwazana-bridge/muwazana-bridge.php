@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.3';
+const VERSION = '1.0.4';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
@@ -376,7 +376,7 @@ function create_expense_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
         'cct_modified' => $now,
     ];
     $row = idempotent_insert($request_id, $member_id, 'expense', 'expense', $data);
-    return is_wp_error($row) ? $row : new WP_REST_Response(transaction_from_row($row, 'expense'), 201);
+    return created_transaction_response($row, 'expense', 'expense', $user);
 }
 
 function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Error
@@ -424,7 +424,7 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
             'cct_modified' => $now,
         ];
         $row = idempotent_insert($request_id, $member_id, 'loan_payment', 'loan_payments', $data);
-        return is_wp_error($row) ? $row : new WP_REST_Response(transaction_from_row($row, 'loan_payment'), 201);
+        return created_transaction_response($row, 'loan_payment', 'payment', $user);
     }
 
     $data = [
@@ -441,7 +441,61 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
         'cct_modified' => $now,
     ];
     $row = idempotent_insert($request_id, $member_id, 'payment', 'payment', $data);
-    return is_wp_error($row) ? $row : new WP_REST_Response(transaction_from_row($row, 'payment'), 201);
+    return created_transaction_response($row, 'payment', 'payment', $user);
+}
+
+/**
+ * Sends approval requests after a new transaction is committed. A retry with
+ * the same requestId returns the original row without sending a second alert.
+ */
+function created_transaction_response(array|WP_Error $row, string $transaction_type, string $event_type, WP_User $user): WP_REST_Response|WP_Error
+{
+    if (is_wp_error($row)) {
+        return $row;
+    }
+
+    $created = (bool) ($row['_muwazana_created'] ?? false);
+    $transaction = transaction_from_row($row, $transaction_type);
+    if ($created) {
+        dispatch_approval_webhook($event_type, $transaction, $user);
+    }
+
+    return new WP_REST_Response($transaction, $created ? 201 : 200);
+}
+
+/**
+ * Each WordPress environment selects its own n8n endpoint in wp-config.php.
+ * No header, token, or password is sent to the webhook.
+ */
+function approval_webhook_url(string $event_type): string
+{
+    $constant = $event_type === 'expense'
+        ? 'MUWAZANA_EXPENSE_APPROVAL_WEBHOOK_URL'
+        : 'MUWAZANA_PAYMENT_APPROVAL_WEBHOOK_URL';
+    $url = defined($constant) ? (string) constant($constant) : '';
+    $environment = function_exists('wp_get_environment_type') ? wp_get_environment_type() : 'production';
+    $url = apply_filters('muwazana_approval_webhook_url', $url, $event_type, $environment);
+
+    return is_string($url) && wp_http_validate_url($url) ? $url : '';
+}
+
+function dispatch_approval_webhook(string $event_type, array $transaction, WP_User $user): void
+{
+    $url = approval_webhook_url($event_type);
+    if ($url === '') {
+        return;
+    }
+
+    wp_safe_remote_post($url, [
+        'timeout' => 3,
+        'blocking' => false,
+        'headers' => ['Content-Type' => 'application/json'],
+        'body' => wp_json_encode([
+            'event' => $event_type . '.created',
+            'timestamp' => gmdate('c'),
+            'data' => array_merge($transaction, ['member' => member_profile($user)]),
+        ]),
+    ]);
 }
 
 function transition_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Error
@@ -905,7 +959,9 @@ function idempotent_insert(string $request_id, int $member_id, string $entity_ty
     if (! $inserted) {
         $wpdb->query('ROLLBACK');
         $existing = idempotent_result($request_id, $entity_type);
-        return $existing ?: new WP_Error('muwazana_duplicate_pending', 'الطلب قيد المعالجة.', ['status' => 409]);
+        return $existing
+            ? array_merge($existing, ['_muwazana_created' => false])
+            : new WP_Error('muwazana_duplicate_pending', 'الطلب قيد المعالجة.', ['status' => 409]);
     }
 
     $entity_id = insert_cct($slug, $data);
@@ -915,7 +971,8 @@ function idempotent_insert(string $request_id, int $member_id, string $entity_ty
     }
     $wpdb->update(request_table(), ['entity_id' => $entity_id], ['request_key' => $request_id]);
     $wpdb->query('COMMIT');
-    return cct_row($slug, $entity_id) ?: array_merge($data, ['_ID' => $entity_id]);
+    $row = cct_row($slug, $entity_id) ?: array_merge($data, ['_ID' => $entity_id]);
+    return array_merge($row, ['_muwazana_created' => true]);
 }
 
 function member_owns_schedule(int $member_id, array $schedule): bool

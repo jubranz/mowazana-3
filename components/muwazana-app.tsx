@@ -59,14 +59,14 @@ const moneyFormatter = new Intl.NumberFormat("ar-SA", {
   maximumFractionDigits: 2,
 });
 
-const dateFormatter = new Intl.DateTimeFormat("ar-SA", { day: "numeric", month: "short", year: "numeric" });
+const dateFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric" });
 
 function money(value: number): string {
   return moneyFormatter.format(Math.abs(value));
 }
 
-function Money({ value }: { value: number }) {
-  return <span className="money" dir="ltr"><Image src="/assets/saudi-riyal.svg" alt="ريال" width={12} height={14} /><bdi>{money(value)}</bdi></span>;
+function Money({ value, sign }: { value: number; sign?: "+" | "−" }) {
+  return <span className="money" dir="ltr"><Image src="/assets/saudi-riyal.svg" alt="ريال" width={12} height={14} /><bdi>{sign}{money(value)}</bdi></span>;
 }
 
 function prettyDate(value: string): string {
@@ -147,7 +147,9 @@ export function MuwazanaApp() {
   }, [loadDashboard, loadProfiles]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((registration) => registration.update()).catch(() => undefined);
+    }
     const onInstall = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
@@ -558,7 +560,7 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
       <div className="transaction-copy"><strong>{item.title || meta.label}</strong><span>{prettyDate(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
-      <div className="transaction-value"><strong className={positive ? "positive" : "negative"}>{positive ? "+" : "−"}<Money value={item.amount} /></strong><StatusBadge status={item.status} /></div>
+      <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={item.status} /></div>
     </article>
   );
 }
@@ -627,11 +629,11 @@ function TransactionSheet({
       const body = kind === "expense"
         ? { amount: numericAmount, category, store, note, date, requestId: crypto.randomUUID() }
         : { amount: numericAmount, targetType, installmentId: targetType === "installment" ? installmentId : undefined, note, date, requestId: crypto.randomUUID() };
-      const result = await readJson<{ dashboard?: DashboardData; notified: boolean }>(
+      const result = await readJson<{ dashboard?: DashboardData }>(
         await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
       );
       if (navigator.vibrate) navigator.vibrate([40, 30, 70]);
-      onSaved(result.dashboard, result.notified ? undefined : "تم الحفظ، لكن تعذّر إرسال تنبيه تليجرام. ستظهر العملية في WordPress.");
+      onSaved(result.dashboard);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر الحفظ.");
     } finally {

@@ -16,7 +16,7 @@
   --radius-xl: 30px;
   --radius-lg: 24px;
   --radius-md: 18px;
-  --font-numbers: Arial, "Helvetica Neue", sans-serif;
+  --font-numbers: Tahoma, Arial, "Helvetica Neue", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -39,8 +39,8 @@ button, input, select { font: inherit; }
 button { color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(30, 108, 86, 0.25); outline-offset: 2px; }
-.money { display: inline-flex; align-items: baseline; gap: .22em; white-space: nowrap; font-family: var(--font-numbers); font-variant-numeric: tabular-nums lining-nums; font-weight: 700; }
-.money img { width: .98em; height: 1.06em; object-fit: contain; opacity: .92; }
+.money { display: inline-flex; align-items: center; gap: .12em; white-space: nowrap; font-family: var(--font-numbers) !important; font-size: 1em !important; line-height: inherit; font-variant-numeric: tabular-nums lining-nums; font-weight: 700; }
+.money img { flex: 0 0 auto; width: .48em; height: .54em; object-fit: contain; opacity: .92; }
 .balance-card .money img { filter: brightness(0) invert(1); opacity: 1; }
 .loans-hero .money img { filter: brightness(0) invert(1); opacity: 1; }
 
@@ -151,7 +151,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   border-radius: 18px;
   background: #f8faf7;
   font-family: var(--font-numbers);
-  font-size: 27px;
+  font-size: 24px;
   font-weight: 750;
   cursor: pointer;
   display: grid;
@@ -200,11 +200,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .balance-top > span:first-child { color: rgba(255,255,255,.72); font-size: 13px; }
 .privacy-pill { display: flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 99px; background: rgba(255,255,255,.1); color: var(--lime); font-size: 11px; }
 .balance-kicker { position: relative; z-index: 1; margin: 26px 0 3px; color: rgba(255,255,255,.7); font-size: 13px; }
-.balance-card h1 { position: relative; z-index: 1; margin: 0; font-size: clamp(48px, 14vw, 68px); letter-spacing: -.065em; line-height: 1.15; }
+.balance-card h1 { position: relative; z-index: 1; margin: 0; font-size: clamp(44px, 12vw, 56px); letter-spacing: -.065em; line-height: 1.15; }
 .balance-bottom { margin-top: 27px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.1); justify-content: flex-start; gap: 22px; }
 .balance-bottom > div:not(.divider) { display: grid; gap: 5px; }
-.balance-bottom span { font-size: 11px; color: rgba(255,255,255,.57); }
-.balance-bottom strong { font-size: 40px; line-height: 1; letter-spacing: -.06em; }
+.balance-bottom > div > span { font-size: 12px; color: rgba(255,255,255,.57); }
+.balance-bottom strong { font-size: 28px; line-height: 1; letter-spacing: -.05em; }
 .balance-bottom .divider { width: 1px; height: 35px; background: rgba(255,255,255,.12); }
 
 .quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0 30px; }
@@ -236,7 +236,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .metric-card.amber .metric-icon, .transaction-icon.amber { background: #faead9; color: #9c5f25; }
 .transaction-icon.green { background: #e2f0e5; color: #35744d; }
 .metric-card p { margin: 14px 0 5px; color: var(--muted); font-size: 12px; }
-.metric-card strong { font-size: 31px; line-height: 1; letter-spacing: -.055em; }
+.metric-card strong { font-size: 25px; line-height: 1; letter-spacing: -.045em; }
 
 .installment-card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 18px; box-shadow: 0 12px 36px rgba(31,55,48,.04); }
 .installment-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
@@ -244,17 +244,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .installment-head strong { font-size: 14px; }
 .installment-head span { color: var(--muted); font-size: 11px; }
 .installment-amount { margin-top: 20px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.installment-amount strong { font-size: 38px; line-height: 1; }
-.installment-amount span { color: var(--muted); font-size: 15px; }
+.installment-amount strong { font-size: 30px; line-height: 1; }
+.installment-amount > span { color: var(--muted); font-size: 15px; }
 .progress-track { margin-top: 13px; height: 7px; overflow: hidden; border-radius: 99px; background: #edf0eb; direction: ltr; }
 .progress-track span { display: block; height: 100%; min-width: 4px; border-radius: inherit; background: linear-gradient(90deg, var(--yellow), #e49d45); }
 .loan-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 18px; padding-top: 15px; border-top: 1px dashed var(--border); }
 .loan-breakdown div { display: grid; gap: 5px; }
-.loan-breakdown span, .loan-total { color: var(--muted); font-size: 11px; }
-.loan-breakdown strong { font-size: 28px; line-height: 1; }
+.loan-breakdown > div > span, .loan-total { color: var(--muted); font-size: 11px; }
+.loan-breakdown strong { font-size: 23px; line-height: 1; }
 .loan-progress { margin-top: 10px; height: 5px; }
 .loan-progress span { background: linear-gradient(90deg, #6eac83, #b8d382); }
-.loan-total { display: block; margin-top: 14px; font-size: 30px; }
+.loan-total { display: block; margin-top: 14px; font-size: 22px; }
 .loan-pending { display: block; margin-top: 11px; color: #9c5f25; line-height: 1.5; font-size: 14px; }
 
 .loans-page { padding-bottom: 108px; }
@@ -269,11 +269,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .loan-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 21px; }
 .loan-summary-grid div { min-height: 112px; display: grid; align-content: center; gap: 10px; padding: 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 15px; background: rgba(255,255,255,.09); }
 .loan-summary-grid div:first-child { grid-column: 1 / -1; min-height: 124px; }
-.loan-summary-grid span, .loan-summary-foot span { color: rgba(255,255,255,.7); font-size: 12px; }
-.loan-summary-grid strong { font-size: 40px; line-height: 1; letter-spacing: -.065em; }
-.loan-summary-grid div:first-child strong { font-size: 50px; }
+.loan-summary-grid > div > span, .loan-summary-foot > span { color: rgba(255,255,255,.7); font-size: 12px; }
+.loan-summary-grid strong { font-size: 28px; line-height: 1; letter-spacing: -.05em; }
+.loan-summary-grid div:first-child strong { font-size: 34px; }
 .loan-summary-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 15px; }
-.loan-summary-foot strong { font-size: 38px; line-height: 1; letter-spacing: -.06em; }
+.loan-summary-foot strong { font-size: 26px; line-height: 1; letter-spacing: -.05em; }
 .loan-summary-foot small { color: #f9d967; font-size: 10px; }
 .loan-list-section { margin-top: 24px; }
 .loan-detail-card { margin-top: 12px; padding: 17px; border: 1px solid var(--border); border-radius: 23px; background: rgba(255,255,255,.78); box-shadow: 0 12px 34px rgba(31,55,48,.04); }
@@ -283,12 +283,12 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .loan-detail-head h3 { margin: 0; font-size: 17px; }
 .loan-amounts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 17px; }
 .loan-amounts div { display: grid; gap: 5px; padding: 10px; border-radius: 14px; background: #f4f7f2; }
-.loan-amounts span { color: var(--muted); font-size: 10px; }
-.loan-amounts strong { font-size: 40px; line-height: 1; letter-spacing: -.06em; }
+.loan-amounts > div > span { color: var(--muted); font-size: 11px; }
+.loan-amounts strong { font-size: 28px; line-height: 1; letter-spacing: -.05em; }
 .loan-next { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding: 13px; border-radius: 16px; background: #fff5d9; }
 .loan-next > div { display: grid; gap: 3px; }
-.loan-next span, .loan-next small { color: #826422; font-size: 10px; }
-.loan-next strong { font-size: 40px; line-height: 1; letter-spacing: -.06em; }
+.loan-next > div > span, .loan-next > div > small { color: #826422; font-size: 11px; }
+.loan-next strong { font-size: 30px; line-height: 1; letter-spacing: -.05em; }
 .loan-next button { min-height: 42px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 13px; background: #314f42; color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .loan-settled { display: flex; align-items: center; gap: 7px; margin-top: 15px; color: #2e704d; font-size: 12px; }
 .installments-toggle { width: 100%; min-height: 45px; display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 0; border: 0; border-top: 1px dashed var(--border); background: transparent; color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
@@ -298,8 +298,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .installment-history-row { min-height: 66px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
 .installment-history-row > div { display: grid; gap: 4px; }
 .installment-history-row > div:last-child { justify-items: end; }
-.installment-history-row strong { font-size: 21px; line-height: 1; }
-.installment-history-row span { color: var(--muted); font-size: 10px; }
+.installment-history-row strong { font-size: 18px; line-height: 1; }
+.installment-history-row > div > span { color: var(--muted); font-size: 10px; }
 
 .transactions-section { padding-bottom: 12px; }
 .transaction-list { border: 1px solid var(--border); background: rgba(255,255,255,.72); border-radius: 24px; padding: 5px 15px; }
@@ -310,7 +310,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .transaction-copy strong { font-size: 13px; }
 .transaction-copy span { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .transaction-value { display: grid; justify-items: end; gap: 5px; }
-.transaction-value > strong { direction: ltr; font-size: 21px; }
+.transaction-value > strong { direction: ltr; font-size: 18px; }
 .transaction-value .positive { color: #287252; }
 .transaction-value .negative { color: #a34940; }
 .status-badge { width: max-content; display: inline-flex; padding: 4px 7px; border-radius: 99px; font-size: 9px; font-weight: 750; background: #edf0ed; color: #627069; }
@@ -335,8 +335,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .transaction-sheet header h2 { margin: 0; font-size: 22px; letter-spacing: -.04em; }
 .transaction-sheet header button { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 14px; background: #fff; cursor: pointer; }
 .amount-display { margin: 14px 0 9px; display: grid; justify-items: center; gap: 2px; }
-.amount-display span { color: var(--muted); font-size: 11px; }
-.amount-display strong { direction: ltr; font-size: 44px; letter-spacing: -.055em; }
+.amount-display > span { color: var(--muted); font-size: 11px; }
+.amount-display strong { direction: ltr; font-size: 38px; letter-spacing: -.05em; }
 .form-section { margin-top: 17px; display: grid; gap: 11px; }
 .field-label, label > span { font-size: 12px; font-weight: 750; }
 .category-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }

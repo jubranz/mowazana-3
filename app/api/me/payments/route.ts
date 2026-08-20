@@ -3,7 +3,7 @@ import { noStoreJson, requireSession, sameOrigin } from "@/lib/api-utils";
 import { createDemoPayment, getDemoDashboard } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/env";
 import { paymentSchema } from "@/lib/validation";
-import { createPayment, getProfiles, notifyApproval } from "@/lib/wordpress";
+import { createPayment } from "@/lib/wordpress";
 
 export const runtime = "nodejs";
 
@@ -18,13 +18,7 @@ export async function POST(request: NextRequest) {
     const transaction = isDemoMode()
       ? createDemoPayment(auth.session.memberId, parsed.data)
       : await createPayment(auth.session.memberId, parsed.data);
-    let notified = true;
-    if (!isDemoMode()) {
-      const profiles = await getProfiles();
-      const member = profiles.find((profile) => profile.id === auth.session.memberId);
-      notified = member ? await notifyApproval("payment", { ...transaction, member }) : false;
-    }
-    return noStoreJson({ transaction, notified, dashboard: isDemoMode() ? getDemoDashboard(auth.session.memberId) : undefined }, { status: 201 });
+    return noStoreJson({ transaction, dashboard: isDemoMode() ? getDemoDashboard(auth.session.memberId) : undefined }, { status: 201 });
   } catch {
     return noStoreJson({ error: "لم يُحفظ السداد. حاول مرة أخرى." }, { status: 503 });
   }

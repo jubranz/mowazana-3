@@ -82,29 +82,3 @@ export function createPayment(memberId: number, input: CreatePaymentInput): Prom
     body: JSON.stringify(input),
   });
 }
-
-export async function notifyApproval(
-  type: "expense" | "payment",
-  payload: FinancialTransaction & { member: MemberProfile },
-): Promise<boolean> {
-  const url = type === "expense" ? process.env.N8N_EXPENSE_APPROVAL_WEBHOOK_URL : process.env.N8N_PAYMENT_APPROVAL_WEBHOOK_URL;
-  if (!url) return false;
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Muwazana-Secret": process.env.N8N_WEBHOOK_SECRET ?? "",
-      },
-      body: JSON.stringify({
-        event: `${type}.created`,
-        timestamp: new Date().toISOString(),
-        data: payload,
-      }),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}

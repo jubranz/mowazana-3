@@ -1,0 +1,190 @@
+{
+  "name": "موازنة — اعتماد السداد عبر تيليجرام",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mowazana-payment-approval",
+        "responseMode": "onReceived",
+        "authentication": "none",
+        "options": {
+          "onlyRunIf": "={{ $json.body.event === 'payment.created' }}"
+        }
+      },
+      "id": "56ae6779-9d28-4dcc-9212-87caaa7cf9b8",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "1c660f04-1dbd-44a5-a313-56457604222c"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $env.MUWAZANA_TELEGRAM_CHAT_ID }}",
+        "message": "=طلب اعتماد سداد جديد\\nالعضو: {{ $json.body.data.member.name }}\\nالمبلغ: {{ $json.body.data.amount }} ريال\\nالنوع: {{ $json.body.data.type === 'loan_payment' ? 'سداد قسط' : 'سداد عام' }}\\nالتاريخ: {{ $json.body.data.date }}\\nملاحظة: {{ $json.body.data.note || '—' }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1bbf5b2c-eed4-4381-901e-d35291c5ef06",
+      "name": "طلب موافقة تليجرام",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_WITH_TELEGRAM_CREDENTIAL",
+          "name": "Telegram Mowazana bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "757fb8d5-9e71-4f58-b7f7-877e3af2d49e",
+              "leftValue": "={{ $json.data.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dbb421f4-aef7-4037-8233-7092dc80c743",
+      "name": "تمت الموافقة؟",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MUWAZANA_WORDPRESS_URL }}/wp-json/muwazana/v1/transactions/{{ $('Webhook').item.json.body.data.type }}/{{ $('Webhook').item.json.body.data.id }}/approve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={}",
+        "options": {}
+      },
+      "id": "c55fa808-17b2-45f2-ab25-2b5ea5d5a370",
+      "name": "اعتماد السداد",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        900,
+        -120
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_WITH_WORDPRESS_SERVICE_CREDENTIAL",
+          "name": "Muwazana WordPress service"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MUWAZANA_WORDPRESS_URL }}/wp-json/muwazana/v1/transactions/{{ $('Webhook').item.json.body.data.type }}/{{ $('Webhook').item.json.body.data.id }}/reject",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ reason: 'مرفوض من مسؤول الاعتماد عبر تيليجرام' }) }}",
+        "options": {}
+      },
+      "id": "d1776e5b-0c33-4472-b4a0-d7ce2ccdf6e3",
+      "name": "رفض السداد",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        900,
+        120
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "REPLACE_WITH_WORDPRESS_SERVICE_CREDENTIAL",
+          "name": "Muwazana WordPress service"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "طلب موافقة تليجرام",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "طلب موافقة تليجرام": {
+      "main": [
+        [
+          {
+            "node": "تمت الموافقة؟",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "تمت الموافقة؟": {
+      "main": [
+        [
+          {
+            "node": "اعتماد السداد",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "رفض السداد",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c3c064fe-9e44-4501-bdd3-3411e1398304",
+  "tags": []
+}

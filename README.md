@@ -8,7 +8,7 @@
 
 - تطبيق Next.js/PWA في جذر المشروع.
 - إضافة WordPress الآمنة في `wordpress/muwazana-bridge`.
-- ملفات n8n الجاهزة للاستيراد في `mowazana_files/n8n`.
+- ملفات n8n الجاهزة للاستيراد في `n8n-workflows`.
 - وضع عرض تجريبي يعمل دون بيانات حقيقية، ورمز دخوله `123456`.
 - سجل طلبات النسخ القادمة في [`FUTURE_UPDATES.md`](FUTURE_UPDATES.md).
 
@@ -18,33 +18,40 @@
 2. انسخ `.env.example` إلى `.env.local` وأدخل القيم الحقيقية، أو ضع `MUWAZANA_DEMO_MODE=true` للتجربة.
 3. شغّل `npm run dev` وافتح الرابط المحلي الظاهر.
 
-لا تستخدم بادئة `NEXT_PUBLIC_` لأي كلمة مرور أو مفتاح؛ جميع اتصالات WordPress وn8n تتم من خادم Next.js فقط.
+لا تستخدم بادئة `NEXT_PUBLIC_` لأي كلمة مرور أو مفتاح؛ تطبيق Next.js يتصل بـ WordPress من الخادم فقط، وإضافة WordPress هي التي ترسل طلبات n8n.
 
 ## إعداد WordPress
 
 1. ارفع مجلد `wordpress/muwazana-bridge` إلى `wp-content/plugins/` وفعّل الإضافة.
 2. أنشئ مستخدمًا خدميًا بدور **Muwazana API Service** ثم أنشئ له Application Password.
 3. من صفحة كل مستخدم عائلي: فعّل ظهوره في موازنة، عيّن PIN من ستة أرقام، واختر لون البطاقة.
-4. ضع رابط WordPress وبيانات المستخدم الخدمي في متغيرات الخادم.
+4. ضع رابط WordPress وبيانات المستخدم الخدمي في متغيرات خادم تطبيق Next.js.
+5. أضف روابط **Production** الخاصة ببيئة WordPress الحالية إلى `wp-config.php`، قبل سطر `/* That's all, stop editing! */`:
+
+   ```php
+   define('MUWAZANA_EXPENSE_APPROVAL_WEBHOOK_URL', 'https://n8n.example.com/webhook/mowazana-expense-approval');
+   define('MUWAZANA_PAYMENT_APPROVAL_WEBHOOK_URL', 'https://n8n.example.com/webhook/mowazana-payment-approval');
+   ```
+
+   لكل بيئة ملف `wp-config.php` مستقل: ضع روابط n8n التجريبية في بيئة الاختبار وروابط الإنتاج في الموقع الحي. لا تضف كلمة مرور أو ترويسة سرية للويبهوك.
 
 تفترض الإضافة أسماء CCT التالية: `expense` و`payment` و`jet_cct_penalty` و`loans` و`loan_schedules` و`loan_payments`. يمكن تغيير أي اسم باستخدام فلتر `muwazana_cct_slug` دون تعديل التطبيق.
 
 ## إعداد n8n
 
-استورد ملفي اعتماد السحب واعتماد السداد، ثم اربط بيانات الاعتماد التي تحمل أسماء مؤقتة `REPLACE_WITH_...` واضبط المتغيرات التالية في بيئة n8n:
+استورد ملفي اعتماد السحب واعتماد السداد من مجلد `n8n-workflows`، ثم اربط بيانات الاعتماد التي تحمل أسماء مؤقتة `REPLACE_WITH_...` واضبط المتغيرات التالية في بيئة n8n:
 
-- `MUWAZANA_WORDPRESS_URL`
 - `MUWAZANA_TELEGRAM_CHAT_ID`
 - `WBIZTOOL_CLIENT_ID`
 - `WBIZTOOL_WHATSAPP_CLIENT`
 - `WBIZTOOL_API_KEY`
 - `MUWAZANA_ADMIN_WHATSAPP` (لمسار المخالفات الحالي)
 
-أنشئ Header Auth credential باسم `Muwazana webhook secret` بحيث يكون اسم الهيدر `X-Muwazana-Secret` وقيمته مطابقة لـ`N8N_WEBHOOK_SECRET` في Vercel. لا تفعّل مسارات العمل قبل ربط بيانات WordPress وتليجرام واختبارها.
+مسارات Webhook الخاصة بالاعتماد لا تستخدم كلمة مرور. الإضافة ترسل إليها تلقائيًا بعد حفظ عملية جديدة في WordPress، ولا تعيد الإرسال عند تكرار الطلب نفسه. لا تفعّل مسارات العمل قبل ربط بيانات WordPress وتليجرام واختبارها.
 
 ## متغيرات Vercel
 
-أضف القيم الموجودة في `.env.example` إلى إعدادات مشروع Vercel. وضع العرض يُسمح به تلقائيًا لمعاينات Vercel إذا كانت إعدادات WordPress ناقصة، لكنه لا يعمل تلقائيًا في Production.
+أضف القيم الموجودة في `.env.example` إلى إعدادات مشروع Vercel. لا تضف أي رابط n8n إلى Vercel؛ وضع العرض يُسمح به تلقائيًا لمعاينات Vercel إذا كانت إعدادات WordPress ناقصة، لكنه لا يعمل تلقائيًا في Production.
 
 ## قواعد مالية منفذة
 

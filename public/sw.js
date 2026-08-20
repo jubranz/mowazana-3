@@ -1,4 +1,4 @@
-const CACHE_NAME = "muwazana-shell-v1";
+const CACHE_NAME = "muwazana-assets-v2";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
@@ -15,7 +15,7 @@ self.addEventListener("fetch", (event) => {
   const isSafeAsset =
     event.request.method === "GET" &&
     url.origin === self.location.origin &&
-    (url.pathname.startsWith("/_next/static/") ||
+    (url.pathname.startsWith("/assets/") ||
       url.pathname === "/manifest.webmanifest" ||
       url.pathname === "/icon" ||
       url.pathname === "/apple-icon");
