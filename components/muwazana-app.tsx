@@ -76,6 +76,7 @@ function prettyDate(value: string): string {
 }
 
 function prettyDateTime(value: string): string {
+  if (!value.includes("T")) return prettyDate(value);
   const date = new Date(value.includes("T") ? value : `${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : dateTimeFormatter.format(date);
 }
