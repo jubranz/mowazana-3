@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
