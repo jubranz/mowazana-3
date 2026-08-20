@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 1.0.8
+ * Version: 1.0.9
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
@@ -363,7 +363,7 @@ function create_expense_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     $data = [
         'title' => sanitize_text_field($input['category'] ?? 'سحب'),
         'amount' => number_format($amount, 2, '.', ''),
-        'date' => iso_date($input['date'] ?? ''),
+        'date' => cct_date_timestamp($input['date'] ?? ''),
         'store' => sanitize_text_field($input['store'] ?? ''),
         'notes' => sanitize_textarea_field($input['note'] ?? ''),
         'tr_status' => 'pending',
@@ -430,7 +430,7 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     $data = [
         'title' => 'إيداع عام',
         'amount' => number_format($amount, 2, '.', ''),
-        'date' => iso_date($input['date'] ?? ''),
+        'date' => cct_date_timestamp($input['date'] ?? ''),
         'note' => sanitize_textarea_field($input['note'] ?? ''),
         'tr_status' => 'pending',
         'name' => $user->display_name,
@@ -859,7 +859,10 @@ function row_date(array $row): string
     $created_value = $row['cct_created'] ?? $row['created_at'] ?? '';
     $created = local_created_datetime($created_value);
     if ($date_value !== '') {
-        $date = iso_date($date_value);
+        $date = parsed_date($date_value);
+        if (! $date) {
+            return $created ? $created->format(DATE_ATOM) : wp_date('c');
+        }
         if ($created) {
             return "{$date}T{$created->format('H:i:sP')}";
         }
@@ -885,12 +888,52 @@ function local_created_datetime(mixed $value): ?\DateTimeImmutable
 
 function iso_date(mixed $value): string
 {
+    return parsed_date($value) ?: wp_date('Y-m-d', null, new \DateTimeZone('Asia/Riyadh'));
+}
+
+function parsed_date(mixed $value): ?string
+{
     $value = trim((string) $value);
-    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value, $match)) {
-        return $match[0];
+    if ($value === '') {
+        return null;
     }
+
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $value, $match)) {
+        return checkdate((int) $match[2], (int) $match[3], (int) $match[1]) ? $match[0] : null;
+    }
+
+    if (preg_match('/^(19|20)\d{6}$/', $value)) {
+        $year = (int) substr($value, 0, 4);
+        $month = (int) substr($value, 4, 2);
+        $day = (int) substr($value, 6, 2);
+        return checkdate($month, $day, $year) ? sprintf('%04d-%02d-%02d', $year, $month, $day) : null;
+    }
+
+    if (is_numeric($value)) {
+        $timestamp = (int) $value;
+        if ($timestamp > 9999999999) {
+            $timestamp = (int) floor($timestamp / 1000);
+        }
+        if ($timestamp <= 86400) {
+            return null;
+        }
+        return wp_date('Y-m-d', $timestamp, new \DateTimeZone('Asia/Riyadh'));
+    }
+
     $timestamp = strtotime($value);
-    return $timestamp ? wp_date('Y-m-d', $timestamp) : wp_date('Y-m-d');
+    return $timestamp && $timestamp > 86400
+        ? wp_date('Y-m-d', $timestamp, new \DateTimeZone('Asia/Riyadh'))
+        : null;
+}
+
+function cct_date_timestamp(mixed $value): int
+{
+    $date = iso_date($value);
+    try {
+        return (new \DateTimeImmutable("{$date} 00:00:00", new \DateTimeZone('Asia/Riyadh')))->getTimestamp();
+    } catch (\Exception) {
+        return current_time('timestamp', true);
+    }
 }
 
 function legacy_date(mixed $value): string

@@ -3,7 +3,7 @@ Contributors: mowazana
 Tags: api, jetengine, family finance
 Requires at least: 6.4
 Requires PHP: 8.0
-Stable tag: 1.0.0
+Stable tag: 1.0.9
 License: GPLv2 or later
 
 Secure REST bridge for the Muwazana member PWA.
