@@ -324,8 +324,9 @@ export function MuwazanaApp() {
             kind={sheet}
             dashboard={dashboard}
             onClose={() => setSheet(null)}
-            onSaved={(updated, warning) => {
+            onSaved={(updated, warning, transaction) => {
               if (updated) setDashboard(updated);
+              else if (transaction) setDashboard((current) => current ? { ...current, recent: [transaction, ...current.recent.filter((item) => `${item.type}-${item.id}` !== `${transaction.type}-${transaction.id}`)] } : current);
               else void loadDashboard(true);
               if (warning) setError(warning);
               setSheet(null);
@@ -432,8 +433,9 @@ export function MuwazanaApp() {
           kind={sheet}
           dashboard={dashboard}
           onClose={() => setSheet(null)}
-          onSaved={(updated, warning) => {
+          onSaved={(updated, warning, transaction) => {
             if (updated) setDashboard(updated);
+            else if (transaction) setDashboard((current) => current ? { ...current, recent: [transaction, ...current.recent.filter((item) => `${item.type}-${item.id}` !== `${transaction.type}-${transaction.id}`)] } : current);
             else void loadDashboard(true);
             if (warning) setError(warning);
             setSheet(null);
@@ -625,7 +627,7 @@ function TransactionSheet({
   kind: Exclude<SheetKind, null>;
   dashboard: DashboardData;
   onClose: () => void;
-  onSaved: (dashboard?: DashboardData, warning?: string) => void;
+  onSaved: (dashboard?: DashboardData, warning?: string, transaction?: FinancialTransaction) => void;
 }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("بنزين");
@@ -664,11 +666,11 @@ function TransactionSheet({
       const body = kind === "expense"
         ? { amount: numericAmount, category, store, note, date, requestId: crypto.randomUUID() }
         : { amount: numericAmount, targetType, installmentId: targetType === "installment" ? installmentId : undefined, note, date, requestId: crypto.randomUUID() };
-      const result = await readJson<{ dashboard?: DashboardData }>(
+      const result = await readJson<{ dashboard?: DashboardData; transaction?: FinancialTransaction }>(
         await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
       );
       if (navigator.vibrate) navigator.vibrate([40, 30, 70]);
-      onSaved(result.dashboard);
+      onSaved(result.dashboard, undefined, result.transaction);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر الحفظ.");
     } finally {

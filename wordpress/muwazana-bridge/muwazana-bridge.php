@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 1.0.7
+ * Version: 1.0.8
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
@@ -363,7 +363,7 @@ function create_expense_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     $data = [
         'title' => sanitize_text_field($input['category'] ?? 'سحب'),
         'amount' => number_format($amount, 2, '.', ''),
-        'date' => legacy_date($input['date'] ?? ''),
+        'date' => iso_date($input['date'] ?? ''),
         'store' => sanitize_text_field($input['store'] ?? ''),
         'notes' => sanitize_textarea_field($input['note'] ?? ''),
         'tr_status' => 'pending',
@@ -430,7 +430,7 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     $data = [
         'title' => 'إيداع عام',
         'amount' => number_format($amount, 2, '.', ''),
-        'date' => legacy_date($input['date'] ?? ''),
+        'date' => iso_date($input['date'] ?? ''),
         'note' => sanitize_textarea_field($input['note'] ?? ''),
         'tr_status' => 'pending',
         'name' => $user->display_name,
