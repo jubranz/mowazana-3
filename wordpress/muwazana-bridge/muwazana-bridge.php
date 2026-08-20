@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 1.0.5
+ * Version: 1.0.6
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.5';
+const VERSION = '1.0.6';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
@@ -850,28 +850,30 @@ function row_date(array $row): string
     }
 
     $created_value = $row['cct_created'] ?? $row['created_at'] ?? '';
+    $created = local_created_datetime($created_value);
     if ($date_value !== '') {
         $date = iso_date($date_value);
-        if ($created_value !== '') {
-            $created_timestamp = strtotime((string) $created_value);
-            if ($created_timestamp) {
-                $timezone = wp_timezone();
-                $time = wp_date('H:i:s', $created_timestamp, $timezone);
-                $offset = (new \DateTimeImmutable('now', $timezone))->format('P');
-                return "{$date}T{$time}{$offset}";
-            }
+        if ($created) {
+            return "{$date}T{$created->format('H:i:sP')}";
         }
         return "{$date}T12:00:00";
     }
 
-    if ($created_value !== '') {
-        $created_timestamp = strtotime((string) $created_value);
-        if ($created_timestamp) {
-            return wp_date('c', $created_timestamp, wp_timezone());
-        }
-    }
+    if ($created) return $created->format(DATE_ATOM);
 
     return wp_date('c');
+}
+
+function local_created_datetime(mixed $value): ?\DateTimeImmutable
+{
+    $value = trim((string) $value);
+    if ($value === '') return null;
+    try {
+        return (new \DateTimeImmutable($value, wp_timezone()))
+            ->setTimezone(new \DateTimeZone('Asia/Riyadh'));
+    } catch (\Exception) {
+        return null;
+    }
 }
 
 function iso_date(mixed $value): string
