@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 1.0.6
+ * Version: 1.0.7
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 const CAPABILITY = 'muwazana_api_access';
 const META_ENABLED = '_muwazana_enabled';
 const META_PIN_HASH = '_muwazana_pin_hash';
@@ -593,7 +593,14 @@ function member_rows(string $slug, int $member_id): array
     if (! table_exists($table)) {
         return [];
     }
-    return $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE cct_author_id = %d ORDER BY _ID DESC LIMIT 500", $member_id), ARRAY_A) ?: [];
+    $columns = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0) ?: [];
+    $owner_columns = ['cct_author_id'];
+    if (in_array('user_id', $columns, true)) {
+        $owner_columns[] = 'user_id';
+    }
+    $where = implode(' OR ', array_map(static fn(string $column): string => "{$column} = %d", $owner_columns));
+    $args = array_fill(0, count($owner_columns), $member_id);
+    return $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE ({$where}) ORDER BY _ID DESC LIMIT 500", ...$args), ARRAY_A) ?: [];
 }
 
 function member_loans(int $member_id): array
