@@ -136,7 +136,7 @@ function AdminTransactionForm({ data, onSaved }: { data: AdminDashboardData; onS
     event.preventDefault(); setMessage("");
     if (!window.confirm("ستُحفظ العملية معتمدة مباشرة وتؤثر ماليًا. هل تريد المتابعة؟")) return;
     setBusy(true);
-    if (needsDetails && ["مخالفة", "مكافأة"].includes(category.trim())) { setMessage("أدخل عنوانًا واضحًا للمخالفة أو المكافأة."); return; }
+    if (needsDetails && ["مخالفة", "مكافأة"].includes(category.trim())) { setMessage("أدخل عنوانًا واضحًا للمخالفة أو المكافأة."); setBusy(false); return; }
     try {
       await jsonRequest("/api/admin/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId, type, amount: Number(amount), category, installmentId: type === "loan_payment" ? effectiveInstallmentId : undefined, date, note, imageData: imageData || undefined, requestId: crypto.randomUUID() }) });
       setAmount(""); setNote(""); setImageData(""); setMessage("تم حفظ العملية واعتمادها وإرسال إشعار للعضو."); onSaved();
