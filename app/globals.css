@@ -459,6 +459,8 @@ input::placeholder { color: #a6afaa; }
 .secondary-button { color: var(--ink); background: var(--surface-solid); border: 1px solid var(--border); }
 .loan-preview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }.loan-preview > div { display: grid; gap: 5px; padding: 12px; border-radius: 15px; background: var(--surface-soft); }.loan-preview span { color: var(--muted); font-size: 10px; }.loan-preview strong { font-size: 19px; }
 .admin-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .7fr); gap: 14px; margin-top: 14px; align-items: start; }
+.admin-queue { min-width: 0; overflow: hidden; }
+.admin-queue .transaction-pagination { min-width: 0; max-width: 100%; }
 .admin-filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }.admin-filters select { min-height: 41px; }
 .admin-transaction-list { border-top: 1px solid var(--border); }
 .admin-transaction { width: 100%; min-height: 78px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 11px; padding: 11px 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: right; cursor: pointer; }

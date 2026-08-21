@@ -35,6 +35,7 @@ export interface FinancialTransaction {
   memberName?: string;
   loanId?: number;
   installmentId?: number;
+  imageUrl?: string;
 }
 
 export interface Installment {
@@ -163,13 +164,15 @@ export interface CreatePaymentInput {
 
 export interface CreateAdminTransactionInput {
   memberId: number;
-  type: "expense" | "payment" | "loan_payment";
+  type: "expense" | "payment" | "loan_payment" | "reward" | "penalty";
   amount: number;
   category?: string;
   installmentId?: number;
   note?: string;
   date?: string;
   requestId: string;
+  /** Data URL for a manager-provided evidence image. Sent only to the server. */
+  imageData?: string;
 }
 
 export interface CreateLoanInput {

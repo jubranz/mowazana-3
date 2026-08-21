@@ -10,18 +10,20 @@ export async function GET(request: NextRequest) {
   const auth = await requireSession();
   if (!auth.session) return auth.error;
   const type = request.nextUrl.searchParams.get("type") ?? "";
+  const scope = request.nextUrl.searchParams.get("scope") ?? "";
   const status = request.nextUrl.searchParams.get("status") ?? "";
   const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? 1));
   const perPage = Math.min(25, Math.max(1, Number(request.nextUrl.searchParams.get("perPage") ?? 5)));
   const query = new URLSearchParams();
   if (type) query.set("type", type);
+  if (scope === "short") query.set("scope", scope);
   if (status) query.set("status", status);
   query.set("page", String(page));
   query.set("perPage", String(perPage));
 
   try {
     const result = isDemoMode()
-      ? getDemoTransactions(auth.session.memberId, status, page, perPage)
+      ? getDemoTransactions(auth.session.memberId, status, page, perPage, scope)
       : await getTransactions(auth.session.memberId, query.toString());
     return noStoreJson(result);
   } catch {

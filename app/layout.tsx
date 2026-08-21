@@ -49,14 +49,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f6f2" },
-    { media: "(prefers-color-scheme: dark)", color: "#101714" },
-  ],
-  colorScheme: "light dark",
+  themeColor: "#f4f6f2",
+  colorScheme: "light",
 };
 
-const themeScript = `(() => { try { const saved = localStorage.getItem('muwazana-theme'); const theme = saved === 'light' || saved === 'dark' ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme; } catch (_) {} })();`;
+const themeScript = `(() => { try { localStorage.removeItem('muwazana-theme'); document.documentElement.dataset.theme = 'light'; document.documentElement.style.colorScheme = 'light'; } catch (_) {} })();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

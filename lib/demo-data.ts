@@ -121,8 +121,9 @@ export function getDemoDashboard(memberId: number): DashboardData {
   };
 }
 
-export function getDemoTransactions(memberId: number, status = "", page = 1, perPage = 5): PagedTransactions {
+export function getDemoTransactions(memberId: number, status = "", page = 1, perPage = 5, scope = ""): PagedTransactions {
   const filtered = memberTransactions(memberId).filter((item) => {
+    if (scope === "short" && item.type === "loan_payment") return false;
     if (status === "pending") return ["pending", "on_hold"].includes(item.status);
     return !status || item.status === status;
   });
@@ -203,11 +204,11 @@ export function createDemoAdminTransaction(input: CreateAdminTransactionInput, a
   const installment = (state.installments[input.memberId] ?? []).find((item) => item.id === input.installmentId);
   const transaction = addDemoTransaction({
     id: Date.now(), memberId: input.memberId, memberName: profile?.name, type: input.type,
-    title: input.type === "expense" ? input.category ?? "سحب" : input.type === "loan_payment" ? installment?.title ?? "إيداع قسط" : "إيداع عام",
+    title: input.type === "expense" ? input.category ?? "سحب" : input.type === "loan_payment" ? installment?.title ?? "إيداع قسط" : input.type === "reward" ? input.category ?? "مكافأة" : input.type === "penalty" ? input.category ?? "مخالفة" : "إيداع عام",
     amount: input.amount, date: withTransactionTime(input.date), status: "approved", note: input.note,
     installmentId: installment?.id, loanId: installment?.loanId,
   });
-  addNotification(input.memberId, "transaction.approved", "عملية أضافها المدير", `أضاف المدير عملية ${transaction.title} واعتمدها مباشرة.`, false, transaction);
+  addNotification(input.memberId, input.type === "reward" ? "member.reward.created" : input.type === "penalty" ? "member.penalty.created" : "transaction.approved", input.type === "reward" ? "تمت إضافة مكافأة" : input.type === "penalty" ? "تمت إضافة مخالفة" : "عملية أضافها المدير", `أضاف المدير عملية ${transaction.title} واعتمدها مباشرة.`, false, transaction);
   void actorId;
   return transaction;
 }

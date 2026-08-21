@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 2.0.0
+ * Version: 2.1.0
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const CAPABILITY = 'muwazana_api_access';
 const MANAGE_CAPABILITY = 'muwazana_manage_finances';
 const META_ENABLED = '_muwazana_enabled';
@@ -145,6 +145,15 @@ function upgrade_schema(): void
             'approved_at' => 'datetime NULL',
         ]);
     }
+    ensure_cct_columns('penalty', [
+        'title' => 'varchar(191) NOT NULL DEFAULT \'\'',
+        'notes' => 'text NULL',
+        'image_url' => 'text NULL',
+        'manager_note' => 'text NULL',
+        'created_by' => 'bigint(20) unsigned NOT NULL DEFAULT 0',
+        'approved_by' => 'bigint(20) unsigned NOT NULL DEFAULT 0',
+        'approved_at' => 'datetime NULL',
+    ]);
     ensure_cct_columns('loan_payments', ['display_title' => 'varchar(191) NOT NULL DEFAULT \'\'']);
     backfill_loan_terms();
     update_option(SCHEMA_OPTION, VERSION, false);
@@ -248,11 +257,11 @@ function register_routes(): void
         'methods' => 'POST', 'callback' => __NAMESPACE__ . '\\admin_create_transaction_endpoint',
         'permission_callback' => __NAMESPACE__ . '\\service_permission',
     ]);
-    register_rest_route('muwazana/v1', '/admin/transactions/(?P<type>expense|payment|loan_payment)/(?P<id>\d+)', [
+    register_rest_route('muwazana/v1', '/admin/transactions/(?P<type>expense|payment|loan_payment|reward|penalty)/(?P<id>\d+)', [
         'methods' => 'PATCH', 'callback' => __NAMESPACE__ . '\\admin_edit_transaction_endpoint',
         'permission_callback' => __NAMESPACE__ . '\\service_permission',
     ]);
-    register_rest_route('muwazana/v1', '/admin/transactions/(?P<type>expense|payment|loan_payment)/(?P<id>\d+)/(?P<action>approve|hold|reject)', [
+    register_rest_route('muwazana/v1', '/admin/transactions/(?P<type>expense|payment|loan_payment|reward|penalty)/(?P<id>\d+)/(?P<action>approve|hold|reject)', [
         'methods' => 'POST', 'callback' => __NAMESPACE__ . '\\admin_transition_endpoint',
         'permission_callback' => __NAMESPACE__ . '\\service_permission',
     ]);
@@ -493,10 +502,14 @@ function transactions_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Er
     $member = enabled_member($member_id);
     if (is_wp_error($member)) return $member;
     $type = sanitize_key((string) $request->get_param('type'));
+    $scope = sanitize_key((string) $request->get_param('scope'));
     $status = sanitize_key((string) $request->get_param('status'));
     $page = max(1, absint($request->get_param('page') ?: 1));
     $per_page = min(25, max(1, absint($request->get_param('perPage') ?: 5)));
     $items = member_transactions($member_id);
+    if ($scope === 'short') {
+        $items = array_values(array_filter($items, static fn(array $item): bool => $item['type'] !== 'loan_payment'));
+    }
     if ($type) {
         $items = array_values(array_filter($items, static fn(array $item): bool => $item['type'] === $type));
     }
@@ -1088,6 +1101,28 @@ function member_rewards(int $member_id): array
     return $rows;
 }
 
+function all_rewards(): array
+{
+    $query = new \WP_Query([
+        'post_type' => 'reward', 'post_status' => ['publish', 'private', 'draft'],
+        'posts_per_page' => 1000, 'no_found_rows' => true,
+    ]);
+    $rows = [];
+    foreach ($query->posts as $post) {
+        $member_id = absint(first_meta($post->ID, ['cct_author_id', 'user_id']));
+        $rows[] = [
+            '_ID' => $post->ID, 'title' => get_the_title($post),
+            'amount' => first_meta($post->ID, ['amount', 'reward_amount']),
+            'date' => first_meta($post->ID, ['date', 'reward_date']) ?: get_the_date('Y-m-d', $post),
+            'tr_status' => first_meta($post->ID, ['tr_status', 'status', 'reward_status']) ?: ($post->post_status === 'publish' ? 'approved' : 'pending'),
+            'notes' => first_meta($post->ID, ['notes', 'description', 'reason']),
+            'image_url' => first_meta($post->ID, ['image_url', 'evidence_image_url']),
+            'cct_author_id' => $member_id, 'cct_created' => $post->post_date,
+        ];
+    }
+    return $rows;
+}
+
 function first_meta(int $post_id, array $keys): mixed
 {
     foreach ($keys as $key) {
@@ -1142,6 +1177,7 @@ function transaction_from_row(array $row, string $type): array
         'memberId' => absint($row['user_id'] ?? $row['cct_author_id'] ?? 0),
         'loanId' => $type === 'loan_payment' ? absint($row['loan_id'] ?? 0) : null,
         'installmentId' => $type === 'loan_payment' ? absint($row['installment_id'] ?? 0) : null,
+        'imageUrl' => (string) ($row['image_url'] ?? ''),
     ];
 }
 
@@ -1375,6 +1411,12 @@ function idempotent_result(string $request_id, string $entity_type): ?array
     global $wpdb;
     $request = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . request_table() . ' WHERE request_key = %s AND entity_type = %s', $request_id, $entity_type), ARRAY_A);
     if (! $request || ! $request['entity_id']) {
+        return null;
+    }
+    if ($entity_type === 'reward') {
+        foreach (all_rewards() as $row) {
+            if (absint($row['_ID'] ?? 0) === (int) $request['entity_id']) return $row;
+        }
         return null;
     }
     return cct_row($entity_type === 'loan_payment' ? 'loan_payments' : $entity_type, (int) $request['entity_id']);
@@ -1619,7 +1661,8 @@ function admin_all_transactions(): array
         rows_to_transactions(all_cct_rows('expense'), 'expense'),
         rows_to_transactions(all_cct_rows('payment'), 'payment'),
         rows_to_transactions(all_cct_rows('loan_payments'), 'loan_payment'),
-        rows_to_transactions(all_cct_rows('penalty'), 'penalty')
+        rows_to_transactions(all_cct_rows('penalty'), 'penalty'),
+        rows_to_transactions(all_rewards(), 'reward')
     );
     foreach ($items as &$item) {
         $user = ! empty($item['memberId']) ? get_user_by('id', (int) $item['memberId']) : false;
@@ -1698,7 +1741,7 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
     $type = sanitize_key((string) ($input['type'] ?? ''));
     $amount_value = amount($input['amount'] ?? 0);
     $request_id = sanitize_request_key($input['requestId'] ?? '');
-    if (! in_array($type, ['expense', 'payment', 'loan_payment'], true) || $amount_value <= 0 || ! $request_id) {
+    if (! in_array($type, ['expense', 'payment', 'loan_payment', 'reward', 'penalty'], true) || $amount_value <= 0 || ! $request_id) {
         return new WP_Error('muwazana_invalid_admin_transaction', 'بيانات العملية غير صالحة.', ['status' => 400]);
     }
     $existing = idempotent_result($request_id, $type);
@@ -1721,7 +1764,7 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
             'approved_by' => $actor->ID, 'approved_at' => $now,
         ]);
         $row = idempotent_insert($request_id, $member_id, $type, 'payment', $data);
-    } else {
+    } elseif ($type === 'loan_payment') {
         $schedule_id = absint($input['installmentId'] ?? 0);
         $schedule = cct_row('loan_schedules', $schedule_id);
         if (! $schedule || ! member_owns_schedule($member_id, $schedule)) return new WP_Error('muwazana_installment_not_found', 'القسط غير متاح.', ['status' => 404]);
@@ -1737,13 +1780,81 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
             'payment_status' => 'approved', 'approved_by' => $actor->ID, 'approved_at' => $now,
         ]);
         $row = atomic_approved_loan_payment($request_id, $member_id, $data);
+    } elseif ($type === 'penalty') {
+        $title = sanitize_text_field($input['category'] ?? 'مخالفة');
+        $image_url = store_evidence_image((string) ($input['imageData'] ?? ''), $title);
+        if (is_wp_error($image_url)) return $image_url;
+        $data = array_merge($common, [
+            'title' => $title, 'amount' => number_format($amount_value, 2, '.', ''),
+            'date' => cct_date_timestamp($input['date'] ?? ''), 'notes' => sanitize_textarea_field($input['note'] ?? ''),
+            'image_url' => $image_url, 'tr_status' => 'approved', 'name' => $member->display_name,
+            'mobile' => member_mobile($member_id), 'email' => $member->user_email,
+            'approved_by' => $actor->ID, 'approved_at' => $now,
+        ]);
+        $row = idempotent_insert($request_id, $member_id, $type, 'penalty', $data);
+    } else {
+        $title = sanitize_text_field($input['category'] ?? 'مكافأة');
+        $image_url = store_evidence_image((string) ($input['imageData'] ?? ''), $title);
+        if (is_wp_error($image_url)) return $image_url;
+        $inserted_request = $wpdb->insert(request_table(), [
+            'request_key' => $request_id, 'member_id' => $member_id, 'entity_type' => 'reward',
+            'entity_id' => 0, 'created_at' => $now,
+        ]);
+        if (! $inserted_request) {
+            $existing = idempotent_result($request_id, 'reward');
+            return $existing ? new WP_REST_Response(transaction_from_row($existing, 'reward')) : new WP_Error('muwazana_duplicate_pending', 'الطلب قيد المعالجة.', ['status' => 409]);
+        }
+        $post_id = wp_insert_post([
+            'post_type' => 'reward', 'post_status' => 'publish', 'post_title' => $title,
+            'post_content' => sanitize_textarea_field($input['note'] ?? ''), 'post_author' => $actor->ID,
+        ], true);
+        if (is_wp_error($post_id)) {
+            $wpdb->delete(request_table(), ['request_key' => $request_id]);
+            return new WP_Error('muwazana_reward_failed', 'تعذر حفظ المكافأة.', ['status' => 500]);
+        }
+        update_post_meta($post_id, 'amount', number_format($amount_value, 2, '.', ''));
+        update_post_meta($post_id, 'date', iso_date($input['date'] ?? ''));
+        update_post_meta($post_id, 'tr_status', 'approved');
+        update_post_meta($post_id, 'notes', sanitize_textarea_field($input['note'] ?? ''));
+        update_post_meta($post_id, 'cct_author_id', $member_id);
+        update_post_meta($post_id, 'created_by', $actor->ID);
+        update_post_meta($post_id, 'image_url', $image_url);
+        $wpdb->update(request_table(), ['entity_id' => $post_id], ['request_key' => $request_id]);
+        $row = [
+            '_ID' => $post_id, 'title' => $title, 'amount' => $amount_value, 'date' => iso_date($input['date'] ?? ''),
+            'tr_status' => 'approved', 'notes' => sanitize_textarea_field($input['note'] ?? ''),
+            'image_url' => $image_url, 'cct_author_id' => $member_id, 'cct_created' => $now,
+        ];
     }
     if (is_wp_error($row)) return $row;
     $transaction = transaction_from_row($row, $type);
     audit_event((int) $actor->ID, 'transaction.created_and_approved', $type, (int) $transaction['id'], [], $transaction, (string) ($input['note'] ?? ''));
-    publish_manager_event('transaction.approved', $actor, $member, $transaction, (string) ($input['note'] ?? ''));
-    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], 'transaction.approved', 'عملية أضافها المدير', 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.', $type, (int) $transaction['id']);
+    $event = in_array($type, ['reward', 'penalty'], true) ? 'member.' . $type . '.created' : 'transaction.approved';
+    publish_manager_event($event, $actor, $member, $transaction, (string) ($input['note'] ?? ''));
+    $label = $type === 'reward' ? 'تمت إضافة مكافأة' : ($type === 'penalty' ? 'تمت إضافة مخالفة' : 'عملية أضافها المدير');
+    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.', $type, (int) $transaction['id'], ['imageUrl' => $transaction['imageUrl'] ?? '']);
     return new WP_REST_Response($transaction, 201);
+}
+
+/** Stores optional evidence as a WordPress media item and returns its public URL. */
+function store_evidence_image(string $data_url, string $title): string|WP_Error
+{
+    if ($data_url === '') return '';
+    if (! preg_match('#^data:(image/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=\s]+)$#', $data_url, $matches)) {
+        return new WP_Error('muwazana_invalid_image', 'ملف الصورة غير صالح.', ['status' => 400]);
+    }
+    $bytes = base64_decode(preg_replace('/\s+/', '', $matches[2]), true);
+    if ($bytes === false || strlen($bytes) > 2500000) {
+        return new WP_Error('muwazana_image_too_large', 'حجم الصورة يجب ألا يتجاوز 2.5 م.ب.', ['status' => 400]);
+    }
+    $extension = match ($matches[1]) { 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif', default => 'jpg' };
+    $upload = wp_upload_bits('muwazana-' . sanitize_title($title ?: 'evidence') . '-' . time() . '.' . $extension, null, $bytes);
+    if (! empty($upload['error'])) return new WP_Error('muwazana_image_upload_failed', 'تعذر رفع الصورة.', ['status' => 500]);
+    $attachment_id = wp_insert_attachment(['post_mime_type' => $matches[1], 'post_title' => $title, 'post_status' => 'inherit'], $upload['file']);
+    if (is_wp_error($attachment_id)) return new WP_Error('muwazana_image_upload_failed', 'تعذر حفظ الصورة.', ['status' => 500]);
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $upload['file']));
+    return (string) wp_get_attachment_url($attachment_id);
 }
 
 function atomic_approved_loan_payment(string $request_id, int $member_id, array $data): array|WP_Error

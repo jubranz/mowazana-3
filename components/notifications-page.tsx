@@ -2,7 +2,6 @@
 
 import { ArrowLeft, Bell, CheckCheck, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ThemeToggle } from "./theme-toggle";
 import type { NotificationItem } from "@/lib/types";
 
 const formatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
@@ -40,7 +39,7 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
     <main className="app-shell notifications-page">
       <header className="app-header page-toolbar">
         <button className="back-button page-back" onClick={onBack}><ArrowLeft size={20} /> الرئيسية</button>
-        <div className="header-actions"><ThemeToggle /><button className="icon-button" onClick={() => void load()} aria-label="تحديث"><RefreshCw size={20} className={busy ? "spin" : ""} /></button></div>
+        <div className="header-actions"><button className="icon-button" onClick={() => void load()} aria-label="تحديث"><RefreshCw size={20} className={busy ? "spin" : ""} /></button></div>
       </header>
       <section className="page-intro"><div className="eyebrow"><Bell size={16} /> مركز التنبيهات</div><h1>إشعاراتك</h1><p>قرارات العمليات، ملاحظات المدير، واستحقاقات الأقساط في مكان واحد.</p></section>
       <div className="section-title notifications-title"><div><span>{items.filter((item) => !item.readAt).length} غير مقروء</span><h2>الأحدث أولًا</h2></div>{items.some((item) => !item.readAt) && <button className="text-button" onClick={markAllRead}><CheckCheck size={17} /> تعليم الكل كمقروء</button>}</div>

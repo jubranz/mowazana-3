@@ -12,7 +12,7 @@ export const pinLoginSchema = z.object({
 
 export const expenseSchema = z.object({
   amount,
-  category: z.enum(["بنزين", "مطعم", "تسوق", "تحويل", "نقدي", "أخرى"]),
+  category: z.enum(["بنزين", "مطعم", "تسوق", "تحويل", "نقدي", "مكافأة", "أخرى"]),
   store: optionalText,
   note: optionalText,
   date: optionalDate,
@@ -43,9 +43,10 @@ const adminBase = z.object({
 });
 
 export const adminTransactionSchema = adminBase.extend({
-  type: z.enum(["expense", "payment", "loan_payment"]),
+  type: z.enum(["expense", "payment", "loan_payment", "reward", "penalty"]),
   category: z.string().trim().max(80).optional(),
   installmentId: z.number().int().positive().optional(),
+  imageData: z.string().max(4_000_000).optional(),
 }).superRefine((value, context) => {
   if (value.type === "loan_payment" && !value.installmentId) {
     context.addIssue({ code: "custom", path: ["installmentId"], message: "installmentId is required" });

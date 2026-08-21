@@ -31,21 +31,18 @@ import {
 } from "lucide-react";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { NotificationsPage } from "@/components/notifications-page";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { statusLabel } from "@/lib/finance";
 import type {
   CanonicalStatus,
   DashboardData,
   FinancialTransaction,
-  Installment,
-  LoanSummary,
   MemberProfile,
   PagedTransactions,
   TransactionStatus,
 } from "@/lib/types";
 
 type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans" | "notifications" | "admin";
-type SheetKind = "expense" | "payment" | null;
+type SheetKind = "expense" | "payment" | "loanPayment" | null;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -58,6 +55,7 @@ const categories = [
   { label: "تسوق", icon: ShoppingBag },
   { label: "تحويل", icon: ArrowLeftRight },
   { label: "نقدي", icon: Banknote },
+  { label: "مكافأة", icon: Gift },
   { label: "أخرى", icon: MoreHorizontal },
 ] as const;
 
@@ -144,7 +142,7 @@ export function MuwazanaApp() {
   const loadTransactions = useCallback(async (status: string, page: number) => {
     setTransactionsBusy(true);
     try {
-      const result = await readJson<PagedTransactions>(await fetch(`/api/me/transactions?status=${status}&page=${page}&perPage=${transactionsPerPage}`, { cache: "no-store" }));
+      const result = await readJson<PagedTransactions>(await fetch(`/api/me/transactions?scope=short&status=${status}&page=${page}&perPage=${transactionsPerPage}`, { cache: "no-store" }));
       setTransactionData(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تحميل العمليات.");
@@ -315,10 +313,9 @@ export function MuwazanaApp() {
 
   const owed = dashboard.balance < 0 ? Math.abs(dashboard.balance) : 0;
   const credit = dashboard.balance > 0 ? dashboard.balance : 0;
-  const nextInstallment = dashboard.installments
-    .filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active")
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-  const installmentLoan = nextInstallment ? dashboard.loans.find((loan) => loan.id === nextInstallment.loanId) : undefined;
+  const longDebt = dashboard.loans
+    .filter((loan) => loan.status === "active")
+    .reduce((sum, loan) => sum + loan.remainingAmount, 0);
 
   if (screen === "notifications") return <NotificationsPage onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
   if (screen === "admin" && dashboard.member.canManage) return <AdminDashboard onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
@@ -329,7 +326,7 @@ export function MuwazanaApp() {
         <LoansPage
           dashboard={dashboard}
           onBack={() => setScreen("dashboard")}
-          onPayment={() => setSheet("payment")}
+          onPayment={() => setSheet("loanPayment")}
           onExpense={() => setSheet("expense")}
           onLogout={() => void logout()}
           onRefresh={() => void loadDashboard()}
@@ -364,7 +361,6 @@ export function MuwazanaApp() {
         <div className="header-actions">
           {dashboard.member.canManage && <button className="icon-button admin-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /></button>}
           <button className="icon-button notification-button" onClick={() => setScreen("notifications")} aria-label="الإشعارات"><Bell size={20} />{dashboard.unreadNotifications > 0 && <span>{Math.min(9, dashboard.unreadNotifications)}</span>}</button>
-          <ThemeToggle />
           {installPrompt && <button className="icon-button install-button" onClick={installApp} aria-label="تثبيت التطبيق"><Download size={20} /></button>}
           <button className="icon-button" onClick={() => void loadDashboard()} disabled={busy} aria-label="تحديث البيانات">
             <RefreshCw size={20} className={busy ? "spin" : ""} />
@@ -382,12 +378,16 @@ export function MuwazanaApp() {
       <section className={`balance-card ${dashboard.balance > 0 ? "balance-positive" : dashboard.balance < 0 ? "balance-negative" : "balance-zero"}`}>
         <div className="balance-glow" />
         <div className="balance-top">
-          <span>الرصيد الحالي</span>
+          <span>ملخص الديون</span>
           <span className="privacy-pill"><ShieldCheck size={14} /> معتمد فقط</span>
         </div>
-        <p className="balance-kicker">{credit > 0 ? "لك رصيد" : owed > 0 ? "المبلغ المطلوب" : "أنت على الصفر"}</p>
+        <p className="balance-kicker">{credit > 0 ? "رصيدك المتاح للديون القصيرة" : owed > 0 ? "الديون القصيرة المطلوبة" : "حساب الديون القصيرة متوازن"}</p>
         <h1><Money value={credit > 0 ? credit : owed} /></h1>
-        <div className="balance-bottom"><div><span>قيد المراجعة</span><strong><Money value={dashboard.pendingAmount} /></strong></div></div>
+        <div className="balance-bottom">
+          <div><span>الديون القصيرة</span><strong><Money value={owed} /></strong></div>
+          <div><span>الديون الطويلة</span><strong><Money value={longDebt} /></strong></div>
+          <div><span>قيد المراجعة</span><strong><Money value={dashboard.pendingAmount} /></strong></div>
+        </div>
       </section>
 
       <section className="quick-actions" aria-label="إجراءات سريعة">
@@ -398,7 +398,7 @@ export function MuwazanaApp() {
         </button>
         <button className="quick-action payment-action" onClick={() => setSheet("payment")}>
           <span><HandCoins size={24} /></span>
-          <div><strong>سجّل سدادًا</strong><small>عام أو قسط</small></div>
+          <div><strong>سجّل إيداعًا</strong><small>للدين القصير</small></div>
           <ChevronLeft size={20} />
         </button>
       </section>
@@ -406,20 +406,10 @@ export function MuwazanaApp() {
       <section className="section-block">
         <div className="section-title"><div><span>نظرة سريعة</span><h2>تفاصيل حسابك</h2></div></div>
         <div className="obligation-grid">
-          <ObligationCard icon={WalletCards} title="الدين الحالي" value={dashboard.obligations.debt} subtitle="من عجز الرصيد العام" tone="coral" />
-          <ObligationCard icon={CalendarClock} title="أقساط الشهر" value={dashboard.obligations.monthlyInstallments} subtitle="الحالي والمتأخر" tone="amber" />
-          <ObligationCard icon={HandCoins} title="المطلوب هذا الشهر" value={dashboard.obligations.monthlyRequired} subtitle="الدين + الأقساط" tone="green" featured />
+          <ObligationCard icon={WalletCards} title="الدين القصير" value={dashboard.obligations.debt} subtitle="السحوبات والمخالفات مقابل الإيداعات" tone="coral" />
+          <ObligationCard icon={HandCoins} title="الرصيد المتاح" value={credit} subtitle="يمكن طلب سحبه كسحب جديد" tone="green" featured />
         </div>
         <div className="activity-summary" aria-label="ملخص الحركة"><div><span>السحوبات</span><strong><Money value={dashboard.totals.expenses} /></strong></div><div><span>السداد</span><strong><Money value={dashboard.totals.payments} /></strong></div><div><span>المكافآت</span><strong><Money value={dashboard.totals.rewards} /></strong></div><div><span>المخالفات</span><strong><Money value={dashboard.totals.penalties} /></strong></div></div>
-      </section>
-
-      <section className="section-block">
-        <div className="section-title">
-          <div><span>الأقساط</span><h2>الدفعة القادمة</h2></div>
-          <CalendarClock size={23} />
-        </div>
-        {nextInstallment ? <NextInstallmentCard installment={nextInstallment} loan={installmentLoan} /> : <EmptyState text="لا توجد أقساط قادمة" />}
-        {!!dashboard.loans.length && <button className="view-loans-button" onClick={() => setScreen("loans")}><span><ListTree size={19} /> كل الديون والأقساط</span><ChevronLeft size={19} /></button>}
       </section>
 
       <section className="section-block transactions-section">
@@ -439,9 +429,9 @@ export function MuwazanaApp() {
 
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
         <button className="active"><WalletCards size={21} /><span>الرئيسية</span></button>
-        <button onClick={() => setScreen("loans")}><ListTree size={21} /><span>الديون</span></button>
+        <button onClick={() => setScreen("loans")}><ListTree size={21} /><span>الأقساط</span></button>
         <button onClick={() => setSheet("expense")}><Plus size={22} /><span>سحب</span></button>
-        <button onClick={() => setSheet("payment")}><HandCoins size={21} /><span>سداد</span></button>
+        <button onClick={() => setSheet("payment")}><HandCoins size={21} /><span>إيداع</span></button>
       </nav>
 
       {sheet && (
@@ -493,7 +483,6 @@ function LoansPage({
       <header className="app-header loans-header">
         <button className="back-button page-back" onClick={onBack}><ArrowLeft size={20} /> الرئيسية</button>
         <div className="header-actions">
-          <ThemeToggle />
           <button className="icon-button" onClick={onRefresh} disabled={refreshing} aria-label="تحديث البيانات"><RefreshCw size={20} className={refreshing ? "spin" : ""} /></button>
           <button className="member-chip" onClick={onLogout} aria-label="تسجيل الخروج"><span style={{ background: dashboard.member.color }}>{dashboard.member.initials}</span><LogOut size={17} /></button>
         </div>
@@ -501,8 +490,8 @@ function LoansPage({
 
       <section className="loans-hero">
         <div className="eyebrow"><ListTree size={16} /> ملف الديون</div>
-        <h1>ديونك وأقساطك</h1>
-        <p>كل دين مستقل، وكل قسط مرتبط به بوضوح.</p>
+        <h1>الديون الطويلة والأقساط</h1>
+        <p>التزاماتك طويلة الأجل، وكل قسط مرتبط بدينه بوضوح.</p>
         <div className="loan-summary-grid">
           <div><span>إجمالي الديون</span><strong><Money value={totalDebt} /></strong></div>
           <div><span>المدفوع</span><strong><Money value={paidDebt} /></strong></div>
@@ -540,9 +529,9 @@ function LoansPage({
 
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
         <button onClick={onBack}><WalletCards size={21} /><span>الرئيسية</span></button>
-        <button className="active"><ListTree size={21} /><span>الديون</span></button>
+        <button className="active"><ListTree size={21} /><span>الأقساط</span></button>
         <button onClick={onExpense}><Plus size={22} /><span>سحب</span></button>
-        <button onClick={onPayment}><HandCoins size={21} /><span>سداد</span></button>
+        <button onClick={onPayment}><HandCoins size={21} /><span>سداد قسط</span></button>
       </nav>
     </main>
   );
@@ -575,30 +564,6 @@ function NumericPad({ mode, onKey, disabled }: { mode: "pin" | "amount"; onKey: 
 
 function ObligationCard({ icon: Icon, title, value, subtitle, tone, featured = false }: { icon: typeof WalletCards; title: string; value: number; subtitle: string; tone: string; featured?: boolean }) {
   return <article className={`obligation-card ${tone} ${featured ? "featured" : ""}`}><span className="metric-icon"><Icon size={22} /></span><p>{title}</p><strong><Money value={value} /></strong><small>{subtitle}</small></article>;
-}
-
-function NextInstallmentCard({ installment, loan }: { installment: Installment; loan?: LoanSummary }) {
-  const progress = installment.amount ? Math.min(100, (installment.paidAmount / installment.amount) * 100) : 0;
-  const totalDebt = loan?.totalAmount ?? 0;
-  const remainingDebt = loan?.remainingAmount ?? 0;
-  const paidDebt = Math.max(0, totalDebt - remainingDebt);
-  const debtProgress = totalDebt ? Math.min(100, (paidDebt / totalDebt) * 100) : 0;
-  return (
-    <article className="installment-card">
-      <div className="installment-head"><div><strong>{installment.title}</strong><span>موعده {prettyDate(installment.dueDate)}</span></div><StatusBadge status={installment.status} /></div>
-      <div className="installment-amount"><strong><Money value={installment.remainingAmount} /></strong><span>متبقي من <Money value={installment.amount} /></span></div>
-      <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-      {loan && <>
-        <div className="loan-breakdown" aria-label={`ملخص ${loan.title}`}>
-          <div><span>المدفوع من كامل الدين</span><strong><Money value={paidDebt} /></strong></div>
-          <div><span>المتبقي من كامل الدين</span><strong><Money value={remainingDebt} /></strong></div>
-        </div>
-        <div className="progress-track loan-progress"><span style={{ width: `${debtProgress}%` }} /></div>
-        <small className="loan-total">إجمالي الدين <Money value={totalDebt} /></small>
-        {!!loan.pendingPaymentAmount && <small className="loan-pending">سداد قيد المراجعة: <Money value={loan.pendingPaymentAmount} /> — لا يدخل في المدفوع حتى يعتمد</small>}
-      </>}
-    </article>
-  );
 }
 
 function TransactionRow({ item }: { item: FinancialTransaction }) {
@@ -651,7 +616,8 @@ function TransactionSheet({
   const [store, setStore] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayInRiyadh());
-  const [targetType, setTargetType] = useState<"general" | "installment">("general");
+  const installmentOnly = kind === "loanPayment";
+  const [targetType] = useState<"general" | "installment">(installmentOnly ? "installment" : "general");
   const payableInstallments = dashboard.installments.filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && !item.hasPendingPayment && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active");
   const [installmentId, setInstallmentId] = useState<number | undefined>(payableInstallments[0]?.id);
   const [busy, setBusy] = useState(false);
@@ -676,7 +642,7 @@ function TransactionSheet({
 
   async function submit() {
     if (!numericAmount || numericAmount <= 0) return setError("أدخل مبلغًا صحيحًا أولًا.");
-    if (kind === "payment" && targetType === "installment" && !installmentId) return setError("اختر القسط المطلوب.");
+    if ((kind === "payment" || kind === "loanPayment") && targetType === "installment" && !installmentId) return setError("اختر القسط المطلوب.");
     setBusy(true);
     setError("");
     try {
@@ -697,11 +663,11 @@ function TransactionSheet({
   }
 
   return (
-    <div className="sheet-layer" role="dialog" aria-modal="true" aria-label={kind === "expense" ? "تسجيل سحب" : "تسجيل سداد"}>
+    <div className="sheet-layer" role="dialog" aria-modal="true" aria-label={kind === "expense" ? "تسجيل سحب" : installmentOnly ? "تسجيل سداد قسط" : "تسجيل إيداع"}>
       <button className="sheet-backdrop" onClick={onClose} aria-label="إغلاق" />
       <section className="transaction-sheet">
         <div className="sheet-handle" />
-        <header><div><span>{kind === "expense" ? "عملية جديدة" : "إثبات دفعة"}</span><h2>{kind === "expense" ? "سجّل سحبًا" : "سجّل سدادًا"}</h2></div><button onClick={onClose} aria-label="إغلاق"><X size={22} /></button></header>
+        <header><div><span>{kind === "expense" ? "عملية جديدة" : "إثبات دفعة"}</span><h2>{kind === "expense" ? "سجّل سحبًا" : installmentOnly ? "سجّل سداد قسط" : "سجّل إيداعًا"}</h2></div><button onClick={onClose} aria-label="إغلاق"><X size={22} /></button></header>
         <div className="amount-display"><span>المبلغ</span><strong><Money value={numericAmount} /></strong></div>
         <NumericPad mode="amount" onKey={pressAmount} disabled={busy} />
 
@@ -720,11 +686,8 @@ function TransactionSheet({
           </div>
         ) : (
           <div className="form-section">
-            <label className="field-label">وجهة السداد</label>
-            <div className="target-switch">
-              <button className={targetType === "general" ? "selected" : ""} onClick={() => setTargetType("general")}><HandCoins size={19} />إيداع عام</button>
-              <button className={targetType === "installment" ? "selected" : ""} onClick={() => setTargetType("installment")} disabled={!payableInstallments.length}><CalendarClock size={19} />إيداع قسط</button>
-            </div>
+            {!installmentOnly && <><label className="field-label">وجهة الإيداع</label><div className="target-switch"><button className="selected"><HandCoins size={19} />إيداع عام</button></div></>}
+            {installmentOnly && <label className="field-label">القسط المطلوب سداده</label>}
             {targetType === "installment" && (
               <label><span>اختر القسط</span><select value={installmentId} onChange={(event) => setInstallmentId(Number(event.target.value))}>{payableInstallments.map((item) => <option value={item.id} key={item.id}>{item.title} — {money(item.remainingAmount)} ﷼</option>)}</select>{selectedInstallment && <small className="field-hint">متبقي <Money value={selectedInstallment.remainingAmount} /> · {prettyDate(selectedInstallment.dueDate)}</small>}</label>
             )}
