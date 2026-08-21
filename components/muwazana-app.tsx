@@ -32,7 +32,7 @@ import {
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { NotificationsPage } from "@/components/notifications-page";
 import { PenaltyDetailsDialog } from "@/components/penalty-details-dialog";
-import { statusLabel } from "@/lib/finance";
+import { statusLabel, transactionDisplayStatus } from "@/lib/finance";
 import type {
   CanonicalStatus,
   DashboardData,
@@ -571,7 +571,7 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
       <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span>{item.type === "penalty" && <button className="penalty-details-button" onClick={() => setDetailsOpen(true)}>اضغط للتفاصيل</button>}</div>
-      <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={item.status} /></div>
+      <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={transactionDisplayStatus(item)} /></div>
       {detailsOpen && <PenaltyDetailsDialog transaction={item} onClose={() => setDetailsOpen(false)} onSubmitted={() => window.location.reload()} />}
     </article>
   );

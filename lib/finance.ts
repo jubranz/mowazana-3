@@ -158,3 +158,8 @@ export function statusLabel(status: CanonicalStatus): string {
   };
   return labels[status];
 }
+
+/** Display-only status for a transaction whose accepted objection cancels a penalty. */
+export function transactionDisplayStatus(transaction: { type: string; status: CanonicalStatus; objectionStatus?: string }): CanonicalStatus {
+  return transaction.type === "penalty" && transaction.objectionStatus === "accepted" ? "cancelled" : transaction.status;
+}
