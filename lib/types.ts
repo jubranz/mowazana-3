@@ -111,6 +111,12 @@ export interface NotificationItem {
   createdAt: string;
   readAt?: string | null;
   managerOnly?: boolean;
+  payload?: {
+    transaction?: FinancialTransaction;
+    imageUrl?: string;
+    canObject?: boolean;
+    objectionDeadline?: string | null;
+  };
 }
 
 export interface PagedTransactions {

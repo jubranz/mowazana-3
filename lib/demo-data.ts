@@ -308,6 +308,6 @@ function addNotification(recipientId: number, event: string, title: string, body
   state.notifications.unshift({
     id: Date.now() + state.notifications.length,
     event, title, body, entityType: transaction.type, entityId: transaction.id,
-    createdAt: new Date().toISOString(), readAt: null, managerOnly,
+    createdAt: new Date().toISOString(), readAt: null, managerOnly, payload: { transaction },
   });
 }

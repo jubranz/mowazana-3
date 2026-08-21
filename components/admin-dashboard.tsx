@@ -96,7 +96,7 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
 
         <section className="panel admin-notifications">
           <div className="panel-heading"><div><span>{data?.unreadNotifications ?? 0} غير مقروء</span><h2>إشعارات المدير</h2></div>{Boolean(data?.unreadNotifications) ? <button className="text-button" onClick={() => void markManagerNotificationsRead()}><Check size={16} /> تعليم كمقروء</button> : <Bell size={21} />}</div>
-          <div className="admin-notification-list">{data?.notifications.slice(0, 12).map((item) => <article className={item.readAt ? "" : "unread"} key={item.id}><span /><div><strong>{item.title}</strong><p>{item.body}</p><time>{dateFormatter.format(new Date(item.createdAt))}</time></div></article>)}{!data?.notifications.length && <div className="empty-state"><Check size={22} /><span>لا توجد تنبيهات</span></div>}</div>
+          <div className="admin-notification-list">{data?.notifications.slice(0, 12).map((item) => { const transaction = item.payload?.transaction?.type === "penalty" ? item.payload.transaction : null; return <article className={item.readAt ? "" : "unread"} key={item.id}><span /><div><strong>{item.title}</strong><p>{item.body}</p><time>{dateFormatter.format(new Date(item.createdAt))}</time>{transaction && <button className="notification-details-button" onClick={() => setSelected(transaction)}>التفاصيل</button>}</div></article>; })}{!data?.notifications.length && <div className="empty-state"><Check size={22} /><span>لا توجد تنبيهات</span></div>}</div>
         </section>
       </div>
 

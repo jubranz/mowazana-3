@@ -2,7 +2,8 @@
 
 import { ArrowLeft, Bell, CheckCheck, MessageCircleWarning, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import type { NotificationItem } from "@/lib/types";
+import type { FinancialTransaction, NotificationItem } from "@/lib/types";
+import { PenaltyDetailsDialog } from "@/components/penalty-details-dialog";
 
 const formatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
   day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh",
@@ -12,6 +13,7 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [details, setDetails] = useState<FinancialTransaction | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -46,8 +48,15 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
       {error && <div className="alert" role="alert">{error}</div>}
       <section className="notification-list">
         {!busy && !items.length && <div className="empty-state"><CheckCheck size={22} /><span>لا توجد إشعارات بعد</span></div>}
-        {items.map((item) => <article className={`notification-card ${item.readAt ? "" : "unread"}`} key={item.id}><span className="notification-dot" />{item.entityType === "penalty" && <span className="notification-objection-icon" title="يمكن الاعتراض خلال 15 يومًا"><MessageCircleWarning size={17} /></span>}<div><strong>{item.title}</strong><p>{item.body}</p><time>{formatter.format(new Date(item.createdAt))}</time></div></article>)}
+        {items.map((item) => { const transaction = penaltyNotificationTransaction(item); return <article className={`notification-card ${item.readAt ? "" : "unread"}`} key={item.id}><span className="notification-dot" />{transaction && <span className="notification-objection-icon" title="يمكن الاعتراض خلال 15 يومًا"><MessageCircleWarning size={17} /></span>}<div><strong>{item.title}</strong><p>{item.body}</p><time>{formatter.format(new Date(item.createdAt))}</time>{transaction && <button className="notification-details-button" onClick={() => setDetails(transaction)}>اضغط للتفاصيل</button>}</div></article>;})}
       </section>
+      {details && <PenaltyDetailsDialog transaction={details} onClose={() => setDetails(null)} onSubmitted={() => void load()} />}
     </main>
   );
+}
+
+function penaltyNotificationTransaction(item: NotificationItem): FinancialTransaction | null {
+  if (item.payload?.transaction?.type === "penalty") return item.payload.transaction;
+  if (item.entityType !== "penalty" || !item.entityId) return null;
+  return { id: item.entityId, type: "penalty", title: item.title.replace(/^.*مخالفة\s*-?\s*/, "") || "مخالفة", amount: 0, date: item.createdAt, status: "approved", note: item.body, imageUrl: item.payload?.imageUrl, canObject: item.payload?.canObject, objectionDeadline: item.payload?.objectionDeadline ?? undefined };
 }

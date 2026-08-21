@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 2.1.0
+ * Version: 2.2.0
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 const CAPABILITY = 'muwazana_api_access';
 const MANAGE_CAPABILITY = 'muwazana_manage_finances';
 const META_ENABLED = '_muwazana_enabled';
@@ -1706,12 +1706,14 @@ function unread_notification_count(int $recipient_id, string $audience): int
 
 function notification_payload(array $row): array
 {
+    $payload = json_decode((string) ($row['payload'] ?? ''), true);
     return [
         'id' => (int) $row['id'], 'event' => (string) $row['event'], 'title' => (string) $row['title'],
         'body' => (string) $row['body'], 'entityType' => (string) $row['entity_type'],
         'entityId' => (int) $row['entity_id'], 'createdAt' => local_created_datetime($row['created_at'])?->format(DATE_ATOM) ?? (string) $row['created_at'],
         'readAt' => $row['read_at'] ? (local_created_datetime($row['read_at'])?->format(DATE_ATOM) ?? (string) $row['read_at']) : null,
         'managerOnly' => $row['audience'] === 'manager',
+        'payload' => is_array($payload) ? $payload : [],
     ];
 }
 
@@ -1929,7 +1931,7 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
     $member_body = $type === 'penalty'
         ? 'أضاف المدير مخالفة - ' . $transaction['title'] . '. يمكنك تقديم اعتراض خلال 15 يومًا.'
         : 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.';
-    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, $member_body, $type, (int) $transaction['id'], ['imageUrl' => $transaction['imageUrl'] ?? '', 'canObject' => $transaction['canObject'] ?? false, 'objectionDeadline' => $transaction['objectionDeadline'] ?? null]);
+    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, $member_body, $type, (int) $transaction['id'], ['transaction' => $transaction, 'imageUrl' => $transaction['imageUrl'] ?? '', 'canObject' => $transaction['canObject'] ?? false, 'objectionDeadline' => $transaction['objectionDeadline'] ?? null]);
     return new WP_REST_Response($transaction, 201);
 }
 
