@@ -1,17 +1,16 @@
-export type CanonicalStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "unknown"
+export type TransactionStatus = "pending" | "on_hold" | "approved" | "rejected";
+export type InstallmentStatus =
   | "upcoming"
   | "due"
+  | "overdue"
   | "partial"
   | "paid"
-  | "overdue"
-  | "active"
-  | "completed"
+  | "carried_forward"
   | "cancelled";
+export type LoanStatus = "draft" | "active" | "suspended" | "completed" | "cancelled";
 
+/** Kept as the read-boundary union while legacy WordPress rows are normalized. */
+export type CanonicalStatus = TransactionStatus | InstallmentStatus | LoanStatus | "unknown";
 export type TransactionType = "expense" | "payment" | "reward" | "penalty" | "loan_payment";
 
 export interface MemberProfile {
@@ -19,6 +18,7 @@ export interface MemberProfile {
   name: string;
   initials: string;
   color: string;
+  canManage?: boolean;
 }
 
 export interface FinancialTransaction {
@@ -26,37 +26,64 @@ export interface FinancialTransaction {
   type: TransactionType;
   title: string;
   amount: number;
-  /** ISO date or date-time, including the transaction's creation time when available. */
+  /** ISO date-time, preserving the original transaction time when available. */
   date: string;
-  status: CanonicalStatus;
+  status: TransactionStatus | "unknown";
   note?: string;
+  managerNote?: string;
+  memberId?: number;
+  memberName?: string;
+  loanId?: number;
+  installmentId?: number;
 }
 
 export interface Installment {
   id: number;
   loanId: number;
   title: string;
+  number?: number;
+  count?: number;
+  baseAmount?: number;
+  carryInAmount?: number;
   amount: number;
   paidAmount: number;
   remainingAmount: number;
   dueDate: string;
-  status: CanonicalStatus;
+  status: InstallmentStatus | "unknown";
+  hasPendingPayment?: boolean;
+  memberId?: number;
 }
 
 export interface LoanSummary {
   id: number;
   title: string;
+  principalAmount?: number;
+  interestRate?: number;
+  interestAmount?: number;
   totalAmount: number;
   remainingAmount: number;
+  installmentCount?: number;
+  installmentAmount?: number;
+  startDate?: string;
+  notes?: string;
   pendingPaymentAmount?: number;
-  status: CanonicalStatus;
+  status: LoanStatus | "unknown";
   nextInstallment: Installment | null;
+}
+
+export interface ObligationSummary {
+  debt: number;
+  monthlyInstallments: number;
+  monthlyRequired: number;
+  monthEnd: string;
 }
 
 export interface DashboardData {
   member: MemberProfile;
   balance: number;
   pendingAmount: number;
+  obligations: ObligationSummary;
+  unreadNotifications: number;
   totals: {
     expenses: number;
     payments: number;
@@ -67,6 +94,53 @@ export interface DashboardData {
   installments: Installment[];
   recent: FinancialTransaction[];
   demo?: boolean;
+}
+
+export interface NotificationItem {
+  id: number;
+  event: string;
+  title: string;
+  body: string;
+  entityType?: string;
+  entityId?: number;
+  createdAt: string;
+  readAt?: string | null;
+  managerOnly?: boolean;
+}
+
+export interface PagedTransactions {
+  transactions: FinancialTransaction[];
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AdminMetrics {
+  pending: number;
+  onHold: number;
+  overdueInstallments: number;
+  activeLoans: number;
+}
+
+export interface AdminDashboardData {
+  metrics: AdminMetrics;
+  profiles: MemberProfile[];
+  installments: Installment[];
+  transactions: PagedTransactions;
+  notifications: NotificationItem[];
+  unreadNotifications: number;
+  demo?: boolean;
+}
+
+export interface LoanTerms {
+  principalAmount: number;
+  interestRate: number;
+  interestAmount: number;
+  totalAmount: number;
+  remainingAmount: number;
+  installmentCount: number;
+  installmentAmount: number;
 }
 
 export interface CreateExpenseInput {
@@ -87,8 +161,32 @@ export interface CreatePaymentInput {
   requestId: string;
 }
 
+export interface CreateAdminTransactionInput {
+  memberId: number;
+  type: "expense" | "payment" | "loan_payment";
+  amount: number;
+  category?: string;
+  installmentId?: number;
+  note?: string;
+  date?: string;
+  requestId: string;
+}
+
+export interface CreateLoanInput {
+  memberId: number;
+  title: string;
+  principalAmount: number;
+  interestRate: number;
+  installmentCount: number;
+  startDate: string;
+  status: "draft" | "active" | "suspended" | "cancelled";
+  notes?: string;
+  requestId: string;
+}
+
 export interface SessionPayload {
   memberId: number;
   name: string;
   color: string;
+  canManage: boolean;
 }

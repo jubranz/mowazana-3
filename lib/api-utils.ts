@@ -31,6 +31,26 @@ export async function requireSession() {
   return { session, error: null };
 }
 
+export async function requireManagerSession() {
+  const auth = await requireSession();
+  if (!auth.session) return auth;
+  if (!auth.session.canManage) {
+    try {
+      const [{ isDemoMode }, { demoProfiles }, { getDashboard }] = await Promise.all([
+        import("./env"), import("./demo-data"), import("./wordpress"),
+      ]);
+      const currentlyAllowed = isDemoMode()
+        ? Boolean(demoProfiles.find((profile) => profile.id === auth.session?.memberId)?.canManage)
+        : Boolean((await getDashboard(auth.session.memberId)).member.canManage);
+      if (currentlyAllowed) return { session: { ...auth.session, canManage: true }, error: null };
+    } catch {
+      // Fall through to the same generic authorization response.
+    }
+    return { session: null, error: noStoreJson({ error: "غير مصرح لك بإدارة موازنة." }, { status: 403 }) };
+  }
+  return auth;
+}
+
 export function requestId(value?: string): string {
   return value && /^[a-zA-Z0-9-]{16,64}$/.test(value) ? value : randomUUID();
 }

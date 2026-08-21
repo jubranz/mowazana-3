@@ -23,7 +23,12 @@ export async function POST(request: NextRequest) {
 
     if (!profile) return noStoreJson({ error: "الرمز غير صحيح." }, { status: 401 });
 
-    const token = await createSessionToken({ memberId: profile.id, name: profile.name, color: profile.color });
+    const token = await createSessionToken({
+      memberId: profile.id,
+      name: profile.name,
+      color: profile.color,
+      canManage: Boolean(profile.canManage),
+    });
     const response = noStoreJson({ profile, demo: isDemoMode() });
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,

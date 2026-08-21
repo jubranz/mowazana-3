@@ -1,10 +1,15 @@
 import { isDemoMode } from "./env";
 import type {
+  AdminDashboardData,
+  CreateAdminTransactionInput,
   CreateExpenseInput,
+  CreateLoanInput,
   CreatePaymentInput,
   DashboardData,
   FinancialTransaction,
   MemberProfile,
+  NotificationItem,
+  PagedTransactions,
 } from "./types";
 
 const API_NAMESPACE = "/wp-json/muwazana/v1";
@@ -64,9 +69,9 @@ export async function getDashboard(memberId: number): Promise<DashboardData> {
   return wpFetch<DashboardData>(`/members/${memberId}/dashboard`);
 }
 
-export function getTransactions(memberId: number, search = ""): Promise<FinancialTransaction[]> {
+export function getTransactions(memberId: number, search = ""): Promise<PagedTransactions> {
   const suffix = search ? `?${search}` : "";
-  return wpFetch<FinancialTransaction[]>(`/members/${memberId}/transactions${suffix}`);
+  return wpFetch<PagedTransactions>(`/members/${memberId}/transactions${suffix}`);
 }
 
 export function createExpense(memberId: number, input: CreateExpenseInput): Promise<FinancialTransaction> {
@@ -81,4 +86,34 @@ export function createPayment(memberId: number, input: CreatePaymentInput): Prom
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function getNotifications(memberId: number, manager = false): Promise<{ notifications: NotificationItem[]; unread: number }> {
+  return wpFetch(`/members/${memberId}/notifications${manager ? "?audience=manager" : ""}`);
+}
+
+export function markNotificationsRead(memberId: number, input: { id?: number; all?: boolean; manager?: boolean }): Promise<{ ok: boolean }> {
+  return wpFetch(`/members/${memberId}/notifications/read`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function getAdminDashboard(actorId: number, search = ""): Promise<AdminDashboardData> {
+  const params = new URLSearchParams(search);
+  params.set("actorId", String(actorId));
+  return wpFetch(`/admin/dashboard?${params.toString()}`);
+}
+
+export function createAdminTransaction(actorId: number, input: CreateAdminTransactionInput): Promise<FinancialTransaction> {
+  return wpFetch("/admin/transactions", { method: "POST", body: JSON.stringify({ ...input, actorId }) });
+}
+
+export function editAdminTransaction(actorId: number, type: string, id: number, input: Record<string, unknown>): Promise<FinancialTransaction> {
+  return wpFetch(`/admin/transactions/${type}/${id}`, { method: "PATCH", body: JSON.stringify({ ...input, actorId }) });
+}
+
+export function transitionAdminTransaction(actorId: number, type: string, id: number, action: string, note: string): Promise<FinancialTransaction> {
+  return wpFetch(`/admin/transactions/${type}/${id}/${action}`, { method: "POST", body: JSON.stringify({ actorId, note }) });
+}
+
+export function createAdminLoan(actorId: number, input: CreateLoanInput): Promise<DashboardData["loans"][number]> {
+  return wpFetch("/admin/loans", { method: "POST", body: JSON.stringify({ ...input, actorId }) });
 }

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { noStoreJson, requireSession } from "@/lib/api-utils";
-import { getDemoDashboard } from "@/lib/demo-data";
+import { getDemoTransactions } from "@/lib/demo-data";
 import { isDemoMode } from "@/lib/env";
 import { getTransactions } from "@/lib/wordpress";
 
@@ -10,16 +10,20 @@ export async function GET(request: NextRequest) {
   const auth = await requireSession();
   if (!auth.session) return auth.error;
   const type = request.nextUrl.searchParams.get("type") ?? "";
-  const cursor = request.nextUrl.searchParams.get("cursor") ?? "";
+  const status = request.nextUrl.searchParams.get("status") ?? "";
+  const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? 1));
+  const perPage = Math.min(25, Math.max(1, Number(request.nextUrl.searchParams.get("perPage") ?? 5)));
   const query = new URLSearchParams();
   if (type) query.set("type", type);
-  if (cursor) query.set("cursor", cursor);
+  if (status) query.set("status", status);
+  query.set("page", String(page));
+  query.set("perPage", String(perPage));
 
   try {
-    const transactions = isDemoMode()
-      ? getDemoDashboard(auth.session.memberId).recent.filter((item) => !type || item.type === type)
+    const result = isDemoMode()
+      ? getDemoTransactions(auth.session.memberId, status, page, perPage)
       : await getTransactions(auth.session.memberId, query.toString());
-    return noStoreJson({ transactions });
+    return noStoreJson(result);
   } catch {
     return noStoreJson({ error: "تعذر تحميل العمليات." }, { status: 503 });
   }

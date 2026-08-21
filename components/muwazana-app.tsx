@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   Delete as Backspace,
   Banknote,
+  Bell,
   CalendarClock,
   Check,
   ChevronLeft,
@@ -16,6 +17,7 @@ import {
   HandCoins,
   LogOut,
   ListTree,
+  LayoutDashboard,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -27,6 +29,9 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
+import { AdminDashboard } from "@/components/admin-dashboard";
+import { NotificationsPage } from "@/components/notifications-page";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { statusLabel } from "@/lib/finance";
 import type {
   CanonicalStatus,
@@ -35,9 +40,11 @@ import type {
   Installment,
   LoanSummary,
   MemberProfile,
+  PagedTransactions,
+  TransactionStatus,
 } from "@/lib/types";
 
-type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans";
+type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans" | "notifications" | "admin";
 type SheetKind = "expense" | "payment" | null;
 
 interface BeforeInstallPromptEvent extends Event {
@@ -81,11 +88,6 @@ function prettyDateTime(value: string): string {
   return Number.isNaN(date.getTime()) ? value : dateTimeFormatter.format(date);
 }
 
-function transactionTimestamp(value: string): number {
-  const timestamp = Date.parse(value.includes("T") ? value : `${value}T00:00:00`);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
 function todayInRiyadh(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Riyadh",
@@ -116,6 +118,9 @@ export function MuwazanaApp() {
   const [offline, setOffline] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [transactionPage, setTransactionPage] = useState(1);
+  const [transactionTab, setTransactionTab] = useState<Extract<TransactionStatus, "approved" | "pending" | "rejected">>("approved");
+  const [transactionData, setTransactionData] = useState<PagedTransactions>({ transactions: [], page: 1, perPage: 5, total: 0, totalPages: 1 });
+  const [transactionsBusy, setTransactionsBusy] = useState(false);
   const transactionsPerPage = 5;
 
   const loadDashboard = useCallback(async (silent = false) => {
@@ -134,6 +139,16 @@ export function MuwazanaApp() {
     } finally {
       if (!silent) setBusy(false);
     }
+  }, []);
+
+  const loadTransactions = useCallback(async (status: string, page: number) => {
+    setTransactionsBusy(true);
+    try {
+      const result = await readJson<PagedTransactions>(await fetch(`/api/me/transactions?status=${status}&page=${page}&perPage=${transactionsPerPage}`, { cache: "no-store" }));
+      setTransactionData(result);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تحميل العمليات.");
+    } finally { setTransactionsBusy(false); }
   }, []);
 
   const loadProfiles = useCallback(async () => {
@@ -187,6 +202,12 @@ export function MuwazanaApp() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [loadDashboard, screen]);
+
+  useEffect(() => {
+    if (!dashboard || screen !== "dashboard") return;
+    const timer = window.setTimeout(() => void loadTransactions(transactionTab, transactionPage), 0);
+    return () => window.clearTimeout(timer);
+  }, [dashboard, loadTransactions, screen, transactionPage, transactionTab]);
 
   async function submitPin(value: string) {
     if (!selectedProfile || value.length !== 6 || busy) return;
@@ -292,20 +313,15 @@ export function MuwazanaApp() {
 
   if (!dashboard) return <LoadingScreen />;
 
-  const sortedTransactions = [...dashboard.recent].sort((a, b) => transactionTimestamp(b.date) - transactionTimestamp(a.date));
-  const transactionPageCount = Math.max(1, Math.ceil(sortedTransactions.length / transactionsPerPage));
-  const currentTransactionPage = Math.min(transactionPage, transactionPageCount);
-  const visibleTransactions = sortedTransactions.slice(
-    (currentTransactionPage - 1) * transactionsPerPage,
-    currentTransactionPage * transactionsPerPage,
-  );
-
   const owed = dashboard.balance < 0 ? Math.abs(dashboard.balance) : 0;
   const credit = dashboard.balance > 0 ? dashboard.balance : 0;
   const nextInstallment = dashboard.installments
-    .filter((item) => !["paid", "cancelled"].includes(item.status))
+    .filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active")
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
   const installmentLoan = nextInstallment ? dashboard.loans.find((loan) => loan.id === nextInstallment.loanId) : undefined;
+
+  if (screen === "notifications") return <NotificationsPage onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
+  if (screen === "admin" && dashboard.member.canManage) return <AdminDashboard onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
 
   if (screen === "loans") {
     return (
@@ -346,6 +362,9 @@ export function MuwazanaApp() {
           <p>مساء الخير، {dashboard.member.name}</p>
         </div>
         <div className="header-actions">
+          {dashboard.member.canManage && <button className="icon-button admin-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /></button>}
+          <button className="icon-button notification-button" onClick={() => setScreen("notifications")} aria-label="الإشعارات"><Bell size={20} />{dashboard.unreadNotifications > 0 && <span>{Math.min(9, dashboard.unreadNotifications)}</span>}</button>
+          <ThemeToggle />
           {installPrompt && <button className="icon-button install-button" onClick={installApp} aria-label="تثبيت التطبيق"><Download size={20} /></button>}
           <button className="icon-button" onClick={() => void loadDashboard()} disabled={busy} aria-label="تحديث البيانات">
             <RefreshCw size={20} className={busy ? "spin" : ""} />
@@ -360,7 +379,7 @@ export function MuwazanaApp() {
       {demo && <div className="demo-ribbon">وضع العرض — بيانات تجريبية</div>}
       {error && <Alert message={error} onClose={() => setError("")} />}
 
-      <section className="balance-card">
+      <section className={`balance-card ${dashboard.balance > 0 ? "balance-positive" : dashboard.balance < 0 ? "balance-negative" : "balance-zero"}`}>
         <div className="balance-glow" />
         <div className="balance-top">
           <span>الرصيد الحالي</span>
@@ -368,11 +387,7 @@ export function MuwazanaApp() {
         </div>
         <p className="balance-kicker">{credit > 0 ? "لك رصيد" : owed > 0 ? "المبلغ المطلوب" : "أنت على الصفر"}</p>
         <h1><Money value={credit > 0 ? credit : owed} /></h1>
-        <div className="balance-bottom">
-          <div><span>قيد المراجعة</span><strong><Money value={dashboard.pendingAmount} /></strong></div>
-          <div className="divider" />
-          <div><span>القروض المتبقية</span><strong><Money value={dashboard.loans.reduce((sum, loan) => sum + loan.remainingAmount, 0)} /></strong></div>
-        </div>
+        <div className="balance-bottom"><div><span>قيد المراجعة</span><strong><Money value={dashboard.pendingAmount} /></strong></div></div>
       </section>
 
       <section className="quick-actions" aria-label="إجراءات سريعة">
@@ -390,12 +405,12 @@ export function MuwazanaApp() {
 
       <section className="section-block">
         <div className="section-title"><div><span>نظرة سريعة</span><h2>تفاصيل حسابك</h2></div></div>
-        <div className="metric-grid">
-          <MetricCard icon={WalletCards} title="السحوبات" value={dashboard.totals.expenses} tone="coral" />
-          <MetricCard icon={HandCoins} title="السداد" value={dashboard.totals.payments} tone="blue" />
-          <MetricCard icon={Gift} title="المكافآت" value={dashboard.totals.rewards} tone="violet" />
-          <MetricCard icon={TriangleAlert} title="المخالفات" value={dashboard.totals.penalties} tone="amber" />
+        <div className="obligation-grid">
+          <ObligationCard icon={WalletCards} title="الدين الحالي" value={dashboard.obligations.debt} subtitle="من عجز الرصيد العام" tone="coral" />
+          <ObligationCard icon={CalendarClock} title="أقساط الشهر" value={dashboard.obligations.monthlyInstallments} subtitle="الحالي والمتأخر" tone="amber" />
+          <ObligationCard icon={HandCoins} title="المطلوب هذا الشهر" value={dashboard.obligations.monthlyRequired} subtitle="الدين + الأقساط" tone="green" featured />
         </div>
+        <div className="activity-summary" aria-label="ملخص الحركة"><div><span>السحوبات</span><strong><Money value={dashboard.totals.expenses} /></strong></div><div><span>السداد</span><strong><Money value={dashboard.totals.payments} /></strong></div><div><span>المكافآت</span><strong><Money value={dashboard.totals.rewards} /></strong></div><div><span>المخالفات</span><strong><Money value={dashboard.totals.penalties} /></strong></div></div>
       </section>
 
       <section className="section-block">
@@ -409,13 +424,14 @@ export function MuwazanaApp() {
 
       <section className="section-block transactions-section">
         <div className="section-title"><div><span>آخر التحديثات</span><h2>العمليات الأخيرة</h2></div></div>
+        <div className="transaction-tabs" role="tablist" aria-label="حالة العمليات">{([{ value: "approved", label: "معتمد" }, { value: "pending", label: "بانتظار المراجعة" }, { value: "rejected", label: "مرفوض" }] as const).map((tab) => <button role="tab" aria-selected={transactionTab === tab.value} className={transactionTab === tab.value ? "active" : ""} key={tab.value} onClick={() => { setTransactionTab(tab.value); setTransactionPage(1); }}>{tab.label}</button>)}</div>
         <div className="transaction-list">
-          {sortedTransactions.length ? visibleTransactions.map((item) => <TransactionRow item={item} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات بعد" />}
+          {transactionsBusy ? <div className="empty-state"><RefreshCw size={21} className="spin" /><span>جارٍ تحميل العمليات…</span></div> : transactionData.transactions.length ? transactionData.transactions.map((item) => <TransactionRow item={item} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات في هذه الحالة" />}
         </div>
-        {transactionPageCount > 1 && (
+        {transactionData.totalPages > 1 && (
           <nav className="transaction-pagination" aria-label="صفحات العمليات">
-            {Array.from({ length: transactionPageCount }, (_, index) => index + 1).map((page) => (
-              <button key={page} className={page === currentTransactionPage ? "active" : ""} onClick={() => setTransactionPage(page)} aria-label={`الصفحة ${page}`} aria-current={page === currentTransactionPage ? "page" : undefined}>{page}</button>
+            {Array.from({ length: transactionData.totalPages }, (_, index) => index + 1).map((page) => (
+              <button key={page} className={page === transactionData.page ? "active" : ""} onClick={() => setTransactionPage(page)} aria-label={`الصفحة ${page}`} aria-current={page === transactionData.page ? "page" : undefined}>{page}</button>
             ))}
           </nav>
         )}
@@ -468,8 +484,8 @@ function LoansPage({
   const totalDebt = activeLoans.reduce((sum, loan) => sum + loan.totalAmount, 0);
   const remainingDebt = activeLoans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
   const paidDebt = Math.max(0, totalDebt - remainingDebt);
-  const openInstallments = dashboard.installments.filter((installment) => !["paid", "cancelled"].includes(installment.status));
-  const monthlyDue = openInstallments.reduce((sum, installment) => sum + installment.remainingAmount, 0);
+  const openInstallments = dashboard.installments.filter((installment) => !["paid", "cancelled", "carried_forward"].includes(installment.status));
+  const monthlyDue = dashboard.obligations.monthlyInstallments;
   const earliestDue = [...openInstallments].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
 
   return (
@@ -477,6 +493,7 @@ function LoansPage({
       <header className="app-header loans-header">
         <button className="back-button page-back" onClick={onBack}><ArrowLeft size={20} /> الرئيسية</button>
         <div className="header-actions">
+          <ThemeToggle />
           <button className="icon-button" onClick={onRefresh} disabled={refreshing} aria-label="تحديث البيانات"><RefreshCw size={20} className={refreshing ? "spin" : ""} /></button>
           <button className="member-chip" onClick={onLogout} aria-label="تسجيل الخروج"><span style={{ background: dashboard.member.color }}>{dashboard.member.initials}</span><LogOut size={17} /></button>
         </div>
@@ -556,8 +573,8 @@ function NumericPad({ mode, onKey, disabled }: { mode: "pin" | "amount"; onKey: 
   );
 }
 
-function MetricCard({ icon: Icon, title, value, tone }: { icon: typeof WalletCards; title: string; value: number; tone: string }) {
-  return <article className={`metric-card ${tone}`}><span className="metric-icon"><Icon size={22} /></span><p>{title}</p><strong><Money value={value} /></strong></article>;
+function ObligationCard({ icon: Icon, title, value, subtitle, tone, featured = false }: { icon: typeof WalletCards; title: string; value: number; subtitle: string; tone: string; featured?: boolean }) {
+  return <article className={`obligation-card ${tone} ${featured ? "featured" : ""}`}><span className="metric-icon"><Icon size={22} /></span><p>{title}</p><strong><Money value={value} /></strong><small>{subtitle}</small></article>;
 }
 
 function NextInstallmentCard({ installment, loan }: { installment: Installment; loan?: LoanSummary }) {
@@ -635,7 +652,8 @@ function TransactionSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayInRiyadh());
   const [targetType, setTargetType] = useState<"general" | "installment">("general");
-  const [installmentId, setInstallmentId] = useState<number | undefined>(dashboard.installments[0]?.id);
+  const payableInstallments = dashboard.installments.filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && !item.hasPendingPayment && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active");
+  const [installmentId, setInstallmentId] = useState<number | undefined>(payableInstallments[0]?.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const numericAmount = Number(amount || 0);
@@ -705,10 +723,10 @@ function TransactionSheet({
             <label className="field-label">وجهة السداد</label>
             <div className="target-switch">
               <button className={targetType === "general" ? "selected" : ""} onClick={() => setTargetType("general")}><HandCoins size={19} />إيداع عام</button>
-              <button className={targetType === "installment" ? "selected" : ""} onClick={() => setTargetType("installment")} disabled={!dashboard.installments.length}><CalendarClock size={19} />إيداع قسط</button>
+              <button className={targetType === "installment" ? "selected" : ""} onClick={() => setTargetType("installment")} disabled={!payableInstallments.length}><CalendarClock size={19} />إيداع قسط</button>
             </div>
             {targetType === "installment" && (
-              <label><span>اختر القسط</span><select value={installmentId} onChange={(event) => setInstallmentId(Number(event.target.value))}>{dashboard.installments.filter((item) => !["paid", "cancelled"].includes(item.status)).map((item) => <option value={item.id} key={item.id}>{item.title} — {money(item.remainingAmount)} ﷼</option>)}</select>{selectedInstallment && <small className="field-hint">متبقي <Money value={selectedInstallment.remainingAmount} /> · {prettyDate(selectedInstallment.dueDate)}</small>}</label>
+              <label><span>اختر القسط</span><select value={installmentId} onChange={(event) => setInstallmentId(Number(event.target.value))}>{payableInstallments.map((item) => <option value={item.id} key={item.id}>{item.title} — {money(item.remainingAmount)} ﷼</option>)}</select>{selectedInstallment && <small className="field-hint">متبقي <Money value={selectedInstallment.remainingAmount} /> · {prettyDate(selectedInstallment.dueDate)}</small>}</label>
             )}
             <label><span>ملاحظة <em>اختياري</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="مثال: حوالة بنكية" /></label>
           </div>

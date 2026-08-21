@@ -30,6 +30,7 @@ export async function readSession(): Promise<SessionPayload | null> {
       memberId: payload.memberId,
       name: payload.name,
       color: typeof payload.color === "string" ? payload.color : "#4f8f78",
+      canManage: payload.canManage === true,
     };
   } catch {
     return null;
