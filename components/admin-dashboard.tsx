@@ -3,7 +3,7 @@
 import Image from "next/image";
 import {
   ArrowLeft, Bell, Check, CirclePause, FilePenLine, HandCoins, Landmark, ListChecks,
-  Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, WalletCards, X,
+  ChevronLeft, Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, WalletCards, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { calculateLoanTerms } from "@/lib/finance";
@@ -89,7 +89,7 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
           </div>
           <div className="admin-transaction-list">
             {!busy && !data?.transactions.transactions.length && <div className="empty-state"><Check size={22} /><span>لا توجد عمليات مطابقة</span></div>}
-            {data?.transactions.transactions.map((item) => <button className="admin-transaction" key={`${item.type}-${item.id}`} onClick={() => setSelected(item)}><span className={`admin-type type-${item.type}`}>{item.type === "expense" ? <WalletCards size={18} /> : item.type === "reward" ? <Gift size={18} /> : item.type === "penalty" ? <TriangleAlert size={18} /> : <HandCoins size={18} />}</span><div><strong>{item.title}</strong><span>{item.memberName} · {dateFormatter.format(new Date(item.date))}</span></div><div><strong><Money value={item.amount} /></strong><span className={`status-badge status-${item.status}`}>{adminStatus(item.status)}</span>{item.objectionStatus === "pending" && <small className="objection-status">اعتراض بانتظار القرار</small>}</div></button>)}
+            {data?.transactions.transactions.map((item) => <button className="admin-transaction" key={`${item.type}-${item.id}`} onClick={() => setSelected(item)}><span className={`admin-type type-${item.type}`}>{item.type === "expense" ? <WalletCards size={18} /> : item.type === "reward" ? <Gift size={18} /> : item.type === "penalty" ? <TriangleAlert size={18} /> : <HandCoins size={18} />}</span><div><strong>{item.title}</strong><span>{item.memberName} · {dateFormatter.format(new Date(item.date))}</span></div><div><strong><Money value={item.amount} /></strong><span className={`status-badge status-${item.status}`}>{adminStatus(item.status)}</span>{item.objectionStatus === "pending" && <small className="objection-status">اعتراض بانتظار القرار</small>}</div><ChevronLeft className="admin-transaction-details" size={19} aria-hidden="true" /></button>)}
           </div>
           {(data?.transactions.totalPages ?? 1) > 1 && <nav className="transaction-pagination">{Array.from({ length: data?.transactions.totalPages ?? 1 }, (_, index) => index + 1).map((value) => <button className={page === value ? "active" : ""} key={value} onClick={() => setPage(value)}>{value}</button>)}</nav>}
         </section>
@@ -128,6 +128,7 @@ function AdminTransactionForm({ data, onSaved }: { data: AdminDashboardData; onS
     event.preventDefault(); setMessage("");
     if (!window.confirm("ستُحفظ العملية معتمدة مباشرة وتؤثر ماليًا. هل تريد المتابعة؟")) return;
     setBusy(true);
+    if (needsDetails && ["مخالفة", "مكافأة"].includes(category.trim())) { setMessage("أدخل عنوانًا واضحًا للمخالفة أو المكافأة."); return; }
     try {
       await jsonRequest("/api/admin/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId, type, amount: Number(amount), category, installmentId: type === "loan_payment" ? effectiveInstallmentId : undefined, date, note, imageData: imageData || undefined, requestId: crypto.randomUUID() }) });
       setAmount(""); setNote(""); setImageData(""); setMessage("تم حفظ العملية واعتمادها وإرسال إشعار للعضو."); onSaved();

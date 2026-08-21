@@ -220,6 +220,7 @@ export function createDemoAdminTransaction(input: CreateAdminTransactionInput, a
     installmentId: installment?.id, loanId: installment?.loanId,
   });
   addNotification(input.memberId, input.type === "reward" ? "member.reward.created" : input.type === "penalty" ? "member.penalty.created" : "transaction.approved", input.type === "reward" ? "تمت إضافة مكافأة" : input.type === "penalty" ? "تمت إضافة مخالفة" : "عملية أضافها المدير", `أضاف المدير عملية ${transaction.title} واعتمدها مباشرة.`, false, transaction);
+  if (["reward", "penalty"].includes(input.type)) addNotification(101, `manager.${input.type}.created`, input.type === "penalty" ? "مخالفة جديدة" : "مكافأة جديدة", `أضاف المدير ${input.type === "penalty" ? "مخالفة" : "مكافأة"} - ${transaction.title}.`, true, transaction);
   void actorId;
   return transaction;
 }

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 2.2.0
+ * Version: 2.3.0
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 const CAPABILITY = 'muwazana_api_access';
 const MANAGE_CAPABILITY = 'muwazana_manage_finances';
 const META_ENABLED = '_muwazana_enabled';
@@ -1840,6 +1840,9 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
     if (! in_array($type, ['expense', 'payment', 'loan_payment', 'reward', 'penalty'], true) || $amount_value <= 0 || ! $request_id) {
         return new WP_Error('muwazana_invalid_admin_transaction', 'بيانات العملية غير صالحة.', ['status' => 400]);
     }
+    if (in_array($type, ['reward', 'penalty'], true) && in_array(sanitize_text_field((string) ($input['category'] ?? '')), ['مخالفة', 'مكافأة', ''], true)) {
+        return new WP_Error('muwazana_admin_title_required', 'أدخل عنوانًا واضحًا للمخالفة أو المكافأة.', ['status' => 400]);
+    }
     $existing = idempotent_result($request_id, $type);
     if ($existing) return new WP_REST_Response(transaction_from_row($existing, $type));
     $now = current_time('mysql');
@@ -1932,6 +1935,11 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
         ? 'أضاف المدير مخالفة - ' . $transaction['title'] . '. يمكنك تقديم اعتراض خلال 15 يومًا.'
         : 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.';
     create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, $member_body, $type, (int) $transaction['id'], ['transaction' => $transaction, 'imageUrl' => $transaction['imageUrl'] ?? '', 'canObject' => $transaction['canObject'] ?? false, 'objectionDeadline' => $transaction['objectionDeadline'] ?? null]);
+    if (in_array($type, ['reward', 'penalty'], true)) {
+        $manager_title = $type === 'penalty' ? 'مخالفة جديدة' : 'مكافأة جديدة';
+        $manager_body = 'أضاف المدير ' . ($type === 'penalty' ? 'مخالفة - ' : 'مكافأة - ') . $transaction['title'] . ' للعضو ' . $member->display_name . '.';
+        notify_managers('manager.created.' . $type . '.' . $transaction['id'], $event, $manager_title, $manager_body, $type, (int) $transaction['id'], ['transaction' => $transaction]);
+    }
     return new WP_REST_Response($transaction, 201);
 }
 

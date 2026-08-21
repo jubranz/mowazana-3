@@ -75,6 +75,31 @@ export function getTransactions(memberId: number, search = ""): Promise<PagedTra
   return wpFetch<PagedTransactions>(`/members/${memberId}/transactions${suffix}`);
 }
 
+/** Fetches a public WordPress upload through the application to avoid browser mixed-content and hotlink blocks. */
+export async function fetchWordPressMedia(source: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  if (isDemoMode() || !source) return null;
+  const base = process.env.WORDPRESS_BASE_URL;
+  if (!base) return null;
+  let url: URL;
+  try {
+    url = new URL(source, base);
+    const wordpress = new URL(base);
+    if (url.hostname !== wordpress.hostname) return null;
+  } catch { return null; }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal, headers: { Authorization: authorizationHeader() } });
+    const contentType = response.headers.get("content-type") ?? "";
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (!response.ok || !contentType.startsWith("image/") || contentLength > 3_000_000) return null;
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > 3_000_000) return null;
+    return { bytes, contentType };
+  } catch { return null; }
+  finally { clearTimeout(timeout); }
+}
+
 export function createExpense(memberId: number, input: CreateExpenseInput): Promise<FinancialTransaction> {
   return wpFetch<FinancialTransaction>(`/members/${memberId}/expenses`, {
     method: "POST",
