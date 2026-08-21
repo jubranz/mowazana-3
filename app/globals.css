@@ -511,7 +511,6 @@ input::placeholder { color: #a6afaa; }
 
 @media (max-width: 600px) {
   .obligation-grid { grid-template-columns: 1fr 1fr; }
-  .obligation-card.featured { grid-column: 1 / -1; }
   .activity-summary { grid-template-columns: repeat(2, 1fr); }
   .admin-header > div:first-child { gap: 5px; }.admin-brand small { display: none; }
   .admin-hero { align-items: flex-start; padding: 21px; }.admin-hero-badge { min-width: 88px; min-height: 90px; }

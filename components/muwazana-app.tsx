@@ -314,9 +314,6 @@ export function MuwazanaApp() {
 
   const owed = dashboard.balance < 0 ? Math.abs(dashboard.balance) : 0;
   const credit = dashboard.balance > 0 ? dashboard.balance : 0;
-  const longDebt = dashboard.loans
-    .filter((loan) => loan.status === "active")
-    .reduce((sum, loan) => sum + loan.remainingAmount, 0);
 
   if (screen === "notifications") return <NotificationsPage onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
   if (screen === "admin" && dashboard.member.canManage) return <AdminDashboard onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
@@ -376,18 +373,17 @@ export function MuwazanaApp() {
       {demo && <div className="demo-ribbon">وضع العرض — بيانات تجريبية</div>}
       {error && <Alert message={error} onClose={() => setError("")} />}
 
-      <section className={`balance-card ${dashboard.balance > 0 ? "balance-positive" : dashboard.balance < 0 ? "balance-negative" : "balance-zero"}`}>
+      <section className={`balance-card ${dashboard.obligations.monthlyRequired > 0 ? "balance-negative" : "balance-positive"}`}>
         <div className="balance-glow" />
         <div className="balance-top">
           <span>ملخص الديون</span>
           <span className="privacy-pill"><ShieldCheck size={14} /> معتمد فقط</span>
         </div>
-        <p className="balance-kicker">{credit > 0 ? "رصيدك المتاح للديون القصيرة" : owed > 0 ? "الديون القصيرة المطلوبة" : "حساب الديون القصيرة متوازن"}</p>
-        <h1><Money value={credit > 0 ? credit : owed} /></h1>
+        <p className="balance-kicker">إجمالي المطلوب هذا الشهر</p>
+        <h1><Money value={dashboard.obligations.monthlyRequired} /></h1>
         <div className="balance-bottom">
-          <div><span>الديون القصيرة</span><strong><Money value={owed} /></strong></div>
-          <div><span>الديون الطويلة</span><strong><Money value={longDebt} /></strong></div>
-          <div><span>قيد المراجعة</span><strong><Money value={dashboard.pendingAmount} /></strong></div>
+          <div><span>الديون القصيرة المطلوبة</span><strong><Money value={owed} /></strong></div>
+          <div><span>الأقساط المستحقة هذا الشهر</span><strong><Money value={dashboard.obligations.monthlyInstallments} /></strong></div>
         </div>
       </section>
 
