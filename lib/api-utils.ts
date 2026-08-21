@@ -19,7 +19,15 @@ export function sameOrigin(request: NextRequest): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return true;
   try {
-    return new URL(origin).host === request.nextUrl.host;
+    const originHost = new URL(origin).host;
+    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const hostHeader = request.headers.get("host")?.split(",")[0]?.trim();
+    const configuredHost = process.env.NEXT_PUBLIC_APP_URL
+      ? new URL(process.env.NEXT_PUBLIC_APP_URL).host
+      : null;
+    const acceptedHosts = [request.nextUrl.host, forwardedHost, hostHeader, configuredHost]
+      .filter((host): host is string => Boolean(host));
+    return acceptedHosts.includes(originHost);
   } catch {
     return false;
   }
