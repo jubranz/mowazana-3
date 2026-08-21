@@ -359,9 +359,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .status-on_hold, .status-suspended { background: #e4e8f4; color: #53617f; }
 .status-carried_forward { background: #eee7fa; color: #7356a3; }
 .empty-state { min-height: 95px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
-.transaction-pagination { display: flex; justify-content: center; gap: 7px; margin-top: 14px; direction: rtl; }
-.transaction-pagination button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 11px; background: #fff; color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.transaction-pagination { display: flex; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 7px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow-x: auto; overflow-y: hidden; margin-top: 14px; padding: 0 4px 3px; direction: rtl; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
+.transaction-pagination::-webkit-scrollbar { display: none; }
+.transaction-pagination button { flex: 0 0 34px; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 11px; background: #fff; color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.transaction-pagination button { scroll-snap-align: center; }
 .transaction-pagination button.active { border-color: var(--green-dark); background: var(--green-dark); color: #fff; }
+
+@media (max-width: 520px) {
+  .transaction-pagination { gap: 5px; padding-inline: 2px; }
+  .transaction-pagination button { flex-basis: 32px; width: 32px; height: 32px; border-radius: 10px; }
+}
 
 .bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(calc(100% - 32px), 450px); height: 70px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 7px; background: rgba(255,255,255,.86); border: 1px solid rgba(255,255,255,.95); border-radius: 23px; box-shadow: 0 17px 50px rgba(22,47,40,.16); backdrop-filter: blur(20px); }
 .bottom-nav button { border: 0; background: transparent; border-radius: 17px; display: grid; place-content: center; justify-items: center; gap: 3px; color: var(--muted); font-size: 9px; cursor: pointer; }
