@@ -3,11 +3,11 @@
 import Image from "next/image";
 import {
   ArrowLeft, Bell, Check, CirclePause, FilePenLine, HandCoins, Landmark, ListChecks,
-  ChevronLeft, Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, WalletCards, X,
+  Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, WalletCards, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { calculateLoanTerms } from "@/lib/finance";
-import type { AdminDashboardData, FinancialTransaction } from "@/lib/types";
+import type { AdminDashboardData, FinancialTransaction, NotificationItem } from "@/lib/types";
 
 const moneyFormatter = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
 const dateFormatter = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Riyadh" });
@@ -89,14 +89,14 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
           </div>
           <div className="admin-transaction-list">
             {!busy && !data?.transactions.transactions.length && <div className="empty-state"><Check size={22} /><span>لا توجد عمليات مطابقة</span></div>}
-            {data?.transactions.transactions.map((item) => <button className="admin-transaction" key={`${item.type}-${item.id}`} onClick={() => setSelected(item)}><span className={`admin-type type-${item.type}`}>{item.type === "expense" ? <WalletCards size={18} /> : item.type === "reward" ? <Gift size={18} /> : item.type === "penalty" ? <TriangleAlert size={18} /> : <HandCoins size={18} />}</span><div><strong>{item.title}</strong><span>{item.memberName} · {dateFormatter.format(new Date(item.date))}</span></div><div><strong><Money value={item.amount} /></strong><span className={`status-badge status-${item.status}`}>{adminStatus(item.status)}</span>{item.objectionStatus === "pending" && <small className="objection-status">اعتراض بانتظار القرار</small>}</div><ChevronLeft className="admin-transaction-details" size={19} aria-hidden="true" /></button>)}
+            {data?.transactions.transactions.map((item) => <button className="admin-transaction" key={`${item.type}-${item.id}`} onClick={() => setSelected(item)}><span className={`admin-type type-${item.type}`}>{item.type === "expense" ? <WalletCards size={18} /> : item.type === "reward" ? <Gift size={18} /> : item.type === "penalty" ? <TriangleAlert size={18} /> : <HandCoins size={18} />}</span><div><strong>{item.type === "penalty" ? `مخالفة - ${item.title}` : item.title}</strong><span>{item.memberName} · {dateFormatter.format(new Date(item.date))}</span></div><div><strong><Money value={item.amount} /></strong><span className={`status-badge status-${item.status}`}>{adminStatus(item.status)}</span>{item.objectionStatus === "pending" && <small className="objection-status">اعتراض بانتظار القرار</small>}</div><span className="admin-transaction-details">التفاصيل</span></button>)}
           </div>
           {(data?.transactions.totalPages ?? 1) > 1 && <nav className="transaction-pagination">{Array.from({ length: data?.transactions.totalPages ?? 1 }, (_, index) => index + 1).map((value) => <button className={page === value ? "active" : ""} key={value} onClick={() => setPage(value)}>{value}</button>)}</nav>}
         </section>
 
         <section className="panel admin-notifications">
           <div className="panel-heading"><div><span>{data?.unreadNotifications ?? 0} غير مقروء</span><h2>إشعارات المدير</h2></div>{Boolean(data?.unreadNotifications) ? <button className="text-button" onClick={() => void markManagerNotificationsRead()}><Check size={16} /> تعليم كمقروء</button> : <Bell size={21} />}</div>
-          <div className="admin-notification-list">{data?.notifications.slice(0, 12).map((item) => { const transaction = item.payload?.transaction?.type === "penalty" ? item.payload.transaction : null; return <article className={item.readAt ? "" : "unread"} key={item.id}><span /><div><strong>{item.title}</strong><p>{item.body}</p><time>{dateFormatter.format(new Date(item.createdAt))}</time>{transaction && <button className="notification-details-button" onClick={() => setSelected(transaction)}>التفاصيل</button>}</div></article>; })}{!data?.notifications.length && <div className="empty-state"><Check size={22} /><span>لا توجد تنبيهات</span></div>}</div>
+          <div className="admin-notification-list">{data?.notifications.slice(0, 12).map((item) => { const transaction = adminPenaltyNotificationTransaction(item); return <article className={item.readAt ? "" : "unread"} key={item.id}><span /><div><strong>{item.title}</strong><p>{item.body}</p><time>{dateFormatter.format(new Date(item.createdAt))}</time>{transaction && <button className="notification-details-button" onClick={() => setSelected(transaction)}>اضغط للتفاصيل</button>}</div></article>; })}{!data?.notifications.length && <div className="empty-state"><Check size={22} /><span>لا توجد تنبيهات</span></div>}</div>
         </section>
       </div>
 
@@ -107,6 +107,14 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
 
 function AdminMetric({ icon: Icon, label, value, tone }: { icon: typeof ListChecks; label: string; value: number; tone: string }) {
   return <article className={`admin-metric ${tone}`}><span><Icon size={21} /></span><div><strong>{value}</strong><small>{label}</small></div></article>;
+}
+
+function adminPenaltyNotificationTransaction(item: NotificationItem): FinancialTransaction | null {
+  if (item.payload?.transaction?.type === "penalty") return item.payload.transaction;
+  const isPenalty = item.entityType === "penalty" || /مخالفة/.test(`${item.title} ${item.body}`);
+  if (!isPenalty || !item.entityId) return null;
+  const titleMatch = `${item.title} ${item.body}`.match(/مخالفة\s*-\s*([^.|،]+)/);
+  return { id: item.entityId, type: "penalty", title: titleMatch?.[1]?.trim() || "مخالفة", amount: 0, date: item.createdAt, status: "approved", note: item.body, objectionStatus: "none" };
 }
 
 function AdminTransactionForm({ data, onSaved }: { data: AdminDashboardData; onSaved: () => void }) {
