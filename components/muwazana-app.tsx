@@ -18,6 +18,7 @@ import {
   LogOut,
   ListTree,
   LayoutDashboard,
+  MessageCircleWarning,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -572,7 +573,7 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
   return (
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
-      <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span></div>
+      <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span>{item.imageUrl && <a className="transaction-image-link" href={item.imageUrl} target="_blank" rel="noreferrer">عرض الصورة</a>}{item.type === "penalty" && item.canObject && <PenaltyObjectionButton transaction={item} />}{item.type === "penalty" && item.objectionStatus === "pending" && <small className="objection-status">اعتراضك بانتظار مراجعة المدير</small>}{item.type === "penalty" && item.objectionStatus === "accepted" && <small className="objection-status accepted">تم قبول الاعتراض</small>}{item.type === "penalty" && item.objectionStatus === "rejected" && <small className="objection-status rejected">تم رفض الاعتراض</small>}</div>
       <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={item.status} /></div>
     </article>
   );
@@ -581,7 +582,27 @@ function TransactionRow({ item }: { item: FinancialTransaction }) {
 function transactionTitle(item: FinancialTransaction, fallback: string): string {
   if (item.type === "payment" && ["سداد عام", "إيداع"].includes(item.title)) return "إيداع عام";
   if (item.type === "loan_payment" && item.title === "سداد قسط") return "إيداع قسط";
+  if (item.type === "penalty") return `مخالفة - ${item.title || fallback}`;
   return item.title || fallback;
+}
+
+function PenaltyObjectionButton({ transaction }: { transaction: FinancialTransaction }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit() {
+    if (text.trim().length < 2) return setError("اكتب سبب الاعتراض.");
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`/api/me/penalties/${transaction.id}/objection`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? "تعذر إرسال الاعتراض.");
+      setOpen(false); setText(""); window.location.reload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "تعذر إرسال الاعتراض."); }
+    finally { setBusy(false); }
+  }
+  return <><button className="objection-button" onClick={() => setOpen(true)} aria-label="تقديم اعتراض على المخالفة"><MessageCircleWarning size={14} /> اعتراض</button>{open && <div className="objection-inline"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب سبب اعتراضك" maxLength={1000} />{error && <small>{error}</small>}<div><button onClick={() => void submit()} disabled={busy}>{busy ? "جارٍ الإرسال…" : "إرسال الاعتراض"}</button><button onClick={() => setOpen(false)} disabled={busy}>إلغاء</button></div></div>}</>;
 }
 
 function StatusBadge({ status }: { status: CanonicalStatus }) {

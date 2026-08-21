@@ -36,6 +36,10 @@ export interface FinancialTransaction {
   loanId?: number;
   installmentId?: number;
   imageUrl?: string;
+  objectionStatus?: "none" | "pending" | "accepted" | "rejected" | "expired";
+  objectionText?: string;
+  objectionDeadline?: string;
+  canObject?: boolean;
 }
 
 export interface Installment {
@@ -185,6 +189,10 @@ export interface CreateLoanInput {
   status: "draft" | "active" | "suspended" | "cancelled";
   notes?: string;
   requestId: string;
+}
+
+export interface SubmitPenaltyObjectionInput {
+  text: string;
 }
 
 export interface SessionPayload {

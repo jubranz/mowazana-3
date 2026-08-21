@@ -38,6 +38,7 @@ type DemoState = {
   notifications: NotificationItem[];
   loans: Record<number, LoanSummary[]>;
   installments: Record<number, Installment[]>;
+  objections: Record<string, { status: "pending" | "accepted" | "rejected"; text: string; decisionNote?: string }>;
 };
 
 const globalDemo = globalThis as typeof globalThis & { __muwazanaDemoV2?: DemoState };
@@ -71,16 +72,26 @@ const state = (globalDemo.__muwazanaDemoV2 ??= {
       { id: 814, loanId: 81, title: "قسط جهاز الحاسب — 6 من 6", number: 6, count: 6, baseAmount: 600, carryInAmount: 0, amount: 600, paidAmount: 0, remainingAmount: 600, dueDate: "2026-10-27", status: "upcoming" },
     ],
   },
+  objections: {},
 });
 
 function allTransactions(): FinancialTransaction[] {
   return [...state.additions, ...baseTransactions]
     .map((item) => ({ ...item, status: state.statusOverrides[`${item.type}-${item.id}`] ?? item.status }))
+    .map(withObjectionState)
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 }
 
 function memberTransactions(memberId: number): FinancialTransaction[] {
-  return allTransactions().filter((item) => item.memberId === memberId);
+  return allTransactions().filter((item) => item.memberId === memberId).map(withObjectionState);
+}
+
+function withObjectionState(item: FinancialTransaction): FinancialTransaction {
+  if (item.type !== "penalty") return item;
+  const decision = state.objections[`${item.type}-${item.id}`];
+  const deadline = new Date(Date.parse(item.date) + 15 * 86400000).toISOString();
+  const canObject = item.status === "approved" && !decision && Date.now() <= Date.parse(deadline);
+  return { ...item, objectionStatus: decision?.status ?? (Date.now() > Date.parse(deadline) ? "expired" : "none"), objectionText: decision?.text, objectionDeadline: deadline, canObject };
 }
 
 function memberLoans(memberId: number): { loans: LoanSummary[]; installments: Installment[] } {
@@ -211,6 +222,24 @@ export function createDemoAdminTransaction(input: CreateAdminTransactionInput, a
   addNotification(input.memberId, input.type === "reward" ? "member.reward.created" : input.type === "penalty" ? "member.penalty.created" : "transaction.approved", input.type === "reward" ? "تمت إضافة مكافأة" : input.type === "penalty" ? "تمت إضافة مخالفة" : "عملية أضافها المدير", `أضاف المدير عملية ${transaction.title} واعتمدها مباشرة.`, false, transaction);
   void actorId;
   return transaction;
+}
+
+export function submitDemoPenaltyObjection(memberId: number, id: number, text: string): FinancialTransaction | null {
+  const transaction = allTransactions().find((item) => item.type === "penalty" && item.id === id && item.memberId === memberId);
+  const hydrated = transaction ? withObjectionState(transaction) : null;
+  if (!hydrated?.canObject) return null;
+  state.objections[`penalty-${id}`] = { status: "pending", text };
+  addNotification(101, "penalty.objection.created", "اعتراض جديد على مخالفة", `قدّم ${hydrated.memberName ?? "العضو"} اعتراضًا على ${hydrated.title}.`, true, hydrated);
+  return withObjectionState({ ...hydrated, objectionStatus: "pending", objectionText: text, canObject: false });
+}
+
+export function decideDemoPenaltyObjection(id: number, action: "accept" | "reject", note: string): FinancialTransaction | null {
+  const transaction = allTransactions().find((item) => item.type === "penalty" && item.id === id);
+  const current = transaction ? state.objections[`penalty-${id}`] : undefined;
+  if (!transaction || !current || current.status !== "pending") return null;
+  state.objections[`penalty-${id}`] = { ...current, status: action === "accept" ? "accepted" : "rejected", decisionNote: note };
+  addNotification(transaction.memberId ?? 0, `penalty.objection.${action}`, action === "accept" ? "تم قبول اعتراضك" : "تم رفض اعتراضك", note || transaction.title, false, transaction);
+  return withObjectionState({ ...transaction, objectionStatus: state.objections[`penalty-${id}`].status, objectionText: current.text, canObject: false });
 }
 
 export function transitionDemoTransaction(type: string, id: number, action: "approve" | "hold" | "reject", note: string): FinancialTransaction | null {

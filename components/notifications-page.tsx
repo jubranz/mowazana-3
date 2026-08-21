@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Bell, CheckCheck, RefreshCw } from "lucide-react";
+import { ArrowLeft, Bell, CheckCheck, MessageCircleWarning, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { NotificationItem } from "@/lib/types";
 
@@ -46,7 +46,7 @@ export function NotificationsPage({ onBack }: { onBack: () => void }) {
       {error && <div className="alert" role="alert">{error}</div>}
       <section className="notification-list">
         {!busy && !items.length && <div className="empty-state"><CheckCheck size={22} /><span>لا توجد إشعارات بعد</span></div>}
-        {items.map((item) => <article className={`notification-card ${item.readAt ? "" : "unread"}`} key={item.id}><span className="notification-dot" /><div><strong>{item.title}</strong><p>{item.body}</p><time>{formatter.format(new Date(item.createdAt))}</time></div></article>)}
+        {items.map((item) => <article className={`notification-card ${item.readAt ? "" : "unread"}`} key={item.id}><span className="notification-dot" />{item.entityType === "penalty" && <span className="notification-objection-icon" title="يمكن الاعتراض خلال 15 يومًا"><MessageCircleWarning size={17} /></span>}<div><strong>{item.title}</strong><p>{item.body}</p><time>{formatter.format(new Date(item.createdAt))}</time></div></article>)}
       </section>
     </main>
   );

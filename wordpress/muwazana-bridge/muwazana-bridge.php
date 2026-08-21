@@ -153,6 +153,12 @@ function upgrade_schema(): void
         'created_by' => 'bigint(20) unsigned NOT NULL DEFAULT 0',
         'approved_by' => 'bigint(20) unsigned NOT NULL DEFAULT 0',
         'approved_at' => 'datetime NULL',
+        'objection_status' => "varchar(20) NOT NULL DEFAULT 'none'",
+        'objection_text' => 'text NULL',
+        'objection_at' => 'datetime NULL',
+        'objection_decided_at' => 'datetime NULL',
+        'objection_decided_by' => 'bigint(20) unsigned NOT NULL DEFAULT 0',
+        'objection_decision_note' => 'text NULL',
     ]);
     ensure_cct_columns('loan_payments', ['display_title' => 'varchar(191) NOT NULL DEFAULT \'\'']);
     backfill_loan_terms();
@@ -236,6 +242,10 @@ function register_routes(): void
         'callback' => __NAMESPACE__ . '\\create_payment_endpoint',
         'permission_callback' => __NAMESPACE__ . '\\service_permission',
     ]);
+    register_rest_route('muwazana/v1', '/members/(?P<id>\d+)/penalties/(?P<penalty_id>\d+)/objection', [
+        'methods' => 'POST', 'callback' => __NAMESPACE__ . '\submit_penalty_objection_endpoint',
+        'permission_callback' => __NAMESPACE__ . '\service_permission',
+    ]);
     register_rest_route('muwazana/v1', '/transactions/(?P<type>expense|payment|loan_payment)/(?P<id>\d+)/(?P<action>approve|reject)', [
         'methods' => 'POST',
         'callback' => __NAMESPACE__ . '\\transition_endpoint',
@@ -268,6 +278,10 @@ function register_routes(): void
     register_rest_route('muwazana/v1', '/admin/loans', [
         'methods' => 'POST', 'callback' => __NAMESPACE__ . '\\admin_create_loan_endpoint',
         'permission_callback' => __NAMESPACE__ . '\\service_permission',
+    ]);
+    register_rest_route('muwazana/v1', '/admin/penalties/(?P<id>\d+)/objection/(?P<action>accept|reject)', [
+        'methods' => 'POST', 'callback' => __NAMESPACE__ . '\decide_penalty_objection_endpoint',
+        'permission_callback' => __NAMESPACE__ . '\service_permission',
     ]);
 }
 
@@ -642,6 +656,77 @@ function create_payment_endpoint(WP_REST_Request $request): WP_REST_Response|WP_
     ];
     $row = idempotent_insert($request_id, $member_id, 'payment', 'payment', $data);
     return created_transaction_response($row, 'payment', 'payment', $user);
+}
+
+function penalty_objection_state(array $row): array
+{
+    $status = sanitize_key((string) ($row['objection_status'] ?? 'none'));
+    if (! in_array($status, ['none', 'pending', 'accepted', 'rejected'], true)) $status = 'none';
+    try {
+        $deadline = (new \DateTimeImmutable(row_date($row), new \DateTimeZone('Asia/Riyadh')))->modify('+15 days');
+    } catch (\Exception) {
+        $deadline = new \DateTimeImmutable('now', new \DateTimeZone('Asia/Riyadh'));
+    }
+    $expired = $status === 'none' && $deadline < new \DateTimeImmutable('now', new \DateTimeZone('Asia/Riyadh'));
+    return [
+        'status' => $expired ? 'expired' : $status,
+        'text' => (string) ($row['objection_text'] ?? ''),
+        'deadline' => $deadline->format(DATE_ATOM),
+        'canObject' => $status === 'none' && ! $expired && normalize_status($row['tr_status'] ?? '') === 'approved',
+    ];
+}
+
+function submit_penalty_objection_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Error
+{
+    $member_id = absint($request['id']);
+    $member = enabled_member($member_id);
+    if (is_wp_error($member)) return $member;
+    $penalty_id = absint($request['penalty_id']);
+    $row = cct_row('penalty', $penalty_id);
+    if (! $row || ! member_owns_row($member_id, $row)) return new WP_Error('muwazana_penalty_not_found', 'المخالفة غير متاحة.', ['status' => 404]);
+    $input = $request->get_json_params();
+    $text = sanitize_textarea_field($input['text'] ?? '');
+    if (mb_strlen($text) < 2 || mb_strlen($text) > 1000) return new WP_Error('muwazana_invalid_objection', 'اكتب سبب الاعتراض بوضوح.', ['status' => 400]);
+    $state = penalty_objection_state($row);
+    if (! $state['canObject']) return new WP_Error('muwazana_objection_closed', 'انتهت مهلة الاعتراض أو يوجد اعتراض مسجل.', ['status' => 409]);
+    update_cct('penalty', $penalty_id, [
+        'objection_status' => 'pending', 'objection_text' => $text,
+        'objection_at' => current_time('mysql'), 'cct_modified' => current_time('mysql'),
+    ]);
+    $updated = cct_row('penalty', $penalty_id) ?: array_merge($row, ['objection_status' => 'pending', 'objection_text' => $text]);
+    $transaction = transaction_from_row($updated, 'penalty');
+    notify_managers('penalty.objection.created.' . $penalty_id, 'penalty.objection.created', 'اعتراض جديد على مخالفة', $member->display_name . ': ' . $text, 'penalty', $penalty_id, ['transaction' => $transaction]);
+    publish_manager_event('penalty.objection.created', $member, $member, $transaction, $text);
+    return new WP_REST_Response($transaction, 201);
+}
+
+function decide_penalty_objection_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Error
+{
+    $input = $request->get_json_params();
+    $actor = manager_user(absint($input['actorId'] ?? 0));
+    if (is_wp_error($actor)) return $actor;
+    $penalty_id = absint($request['id']);
+    $action = $request['action'] === 'accept' ? 'accept' : 'reject';
+    $note = sanitize_textarea_field($input['note'] ?? '');
+    $row = cct_row('penalty', $penalty_id);
+    if (! $row || sanitize_key((string) ($row['objection_status'] ?? '')) !== 'pending') return new WP_Error('muwazana_objection_not_pending', 'لا يوجد اعتراض بانتظار القرار.', ['status' => 409]);
+    $next = $action === 'accept' ? 'accepted' : 'rejected';
+    update_cct('penalty', $penalty_id, [
+        'objection_status' => $next, 'objection_decided_at' => current_time('mysql'),
+        'objection_decided_by' => $actor->ID, 'objection_decision_note' => $note,
+        'cct_modified' => current_time('mysql'),
+    ]);
+    $updated = cct_row('penalty', $penalty_id) ?: array_merge($row, ['objection_status' => $next, 'objection_decision_note' => $note]);
+    $transaction = transaction_from_row($updated, 'penalty');
+    $member_id = absint($row['cct_author_id'] ?? $row['user_id'] ?? 0);
+    $member = get_user_by('id', $member_id);
+    if ($member) {
+        $title = $action === 'accept' ? 'تم قبول اعتراضك' : 'تم رفض اعتراضك';
+        create_notification($member_id, 'member', 'penalty.objection.' . $next . '.' . $penalty_id, 'penalty.objection.' . $next, $title, $note ?: $transaction['title'], 'penalty', $penalty_id);
+        publish_manager_event('penalty.objection.' . $next, $actor, $member, $transaction, $note);
+    }
+    audit_event((int) $actor->ID, 'penalty.objection.' . $next, 'penalty', $penalty_id, transaction_from_row($row, 'penalty'), $transaction, $note);
+    return new WP_REST_Response($transaction);
 }
 
 /**
@@ -1136,7 +1221,7 @@ function first_meta(int $post_id, array $keys): mixed
 
 function approved_sum(array $rows, string $status_field): float
 {
-    return round(array_reduce($rows, static fn(float $sum, array $row): float => $sum + (normalize_status($row[$status_field] ?? '') === 'approved' ? amount($row['amount'] ?? 0) : 0), 0.0), 2);
+    return round(array_reduce($rows, static fn(float $sum, array $row): float => $sum + (normalize_status($row[$status_field] ?? '') === 'approved' && sanitize_key((string) ($row['objection_status'] ?? '')) !== 'accepted' ? amount($row['amount'] ?? 0) : 0), 0.0), 2);
 }
 
 function pending_sum(array $rows, string $status_field): float
@@ -1178,6 +1263,10 @@ function transaction_from_row(array $row, string $type): array
         'loanId' => $type === 'loan_payment' ? absint($row['loan_id'] ?? 0) : null,
         'installmentId' => $type === 'loan_payment' ? absint($row['installment_id'] ?? 0) : null,
         'imageUrl' => (string) ($row['image_url'] ?? ''),
+        'objectionStatus' => $type === 'penalty' ? penalty_objection_state($row)['status'] : 'none',
+        'objectionText' => $type === 'penalty' ? penalty_objection_state($row)['text'] : '',
+        'objectionDeadline' => $type === 'penalty' ? penalty_objection_state($row)['deadline'] : null,
+        'canObject' => $type === 'penalty' ? penalty_objection_state($row)['canObject'] : false,
     ];
 }
 
@@ -1459,6 +1548,11 @@ function member_owns_schedule(int $member_id, array $schedule): bool
     }
     $loan = cct_row('loans', absint($schedule['loan_id'] ?? 0));
     return $loan && ((int) ($loan['user_id'] ?? 0) === $member_id || (int) ($loan['cct_author_id'] ?? 0) === $member_id);
+}
+
+function member_owns_row(int $member_id, array $row): bool
+{
+    return $member_id > 0 && in_array($member_id, [absint($row['cct_author_id'] ?? 0), absint($row['user_id'] ?? 0)], true);
 }
 
 function schedule_remaining(array $schedule): float
@@ -1832,7 +1926,10 @@ function admin_create_transaction_endpoint(WP_REST_Request $request): WP_REST_Re
     $event = in_array($type, ['reward', 'penalty'], true) ? 'member.' . $type . '.created' : 'transaction.approved';
     publish_manager_event($event, $actor, $member, $transaction, (string) ($input['note'] ?? ''));
     $label = $type === 'reward' ? 'تمت إضافة مكافأة' : ($type === 'penalty' ? 'تمت إضافة مخالفة' : 'عملية أضافها المدير');
-    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.', $type, (int) $transaction['id'], ['imageUrl' => $transaction['imageUrl'] ?? '']);
+    $member_body = $type === 'penalty'
+        ? 'أضاف المدير مخالفة - ' . $transaction['title'] . '. يمكنك تقديم اعتراض خلال 15 يومًا.'
+        : 'أضاف المدير ' . $transaction['title'] . ' واعتمدها مباشرة.';
+    create_notification($member_id, 'member', 'admin.created.' . $type . '.' . $transaction['id'], $event, $label, $member_body, $type, (int) $transaction['id'], ['imageUrl' => $transaction['imageUrl'] ?? '', 'canObject' => $transaction['canObject'] ?? false, 'objectionDeadline' => $transaction['objectionDeadline'] ?? null]);
     return new WP_REST_Response($transaction, 201);
 }
 

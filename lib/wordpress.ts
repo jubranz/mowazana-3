@@ -10,6 +10,7 @@ import type {
   MemberProfile,
   NotificationItem,
   PagedTransactions,
+  SubmitPenaltyObjectionInput,
 } from "./types";
 
 const API_NAMESPACE = "/wp-json/muwazana/v1";
@@ -88,6 +89,13 @@ export function createPayment(memberId: number, input: CreatePaymentInput): Prom
   });
 }
 
+export function submitPenaltyObjection(memberId: number, penaltyId: number, input: SubmitPenaltyObjectionInput): Promise<FinancialTransaction> {
+  return wpFetch<FinancialTransaction>(`/members/${memberId}/penalties/${penaltyId}/objection`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function getNotifications(memberId: number, manager = false): Promise<{ notifications: NotificationItem[]; unread: number }> {
   return wpFetch(`/members/${memberId}/notifications${manager ? "?audience=manager" : ""}`);
 }
@@ -112,6 +120,10 @@ export function editAdminTransaction(actorId: number, type: string, id: number, 
 
 export function transitionAdminTransaction(actorId: number, type: string, id: number, action: string, note: string): Promise<FinancialTransaction> {
   return wpFetch(`/admin/transactions/${type}/${id}/${action}`, { method: "POST", body: JSON.stringify({ actorId, note }) });
+}
+
+export function decidePenaltyObjection(actorId: number, id: number, action: "accept" | "reject", note: string): Promise<FinancialTransaction> {
+  return wpFetch<FinancialTransaction>(`/admin/penalties/${id}/objection/${action}`, { method: "POST", body: JSON.stringify({ actorId, note }) });
 }
 
 export function createAdminLoan(actorId: number, input: CreateLoanInput): Promise<DashboardData["loans"][number]> {

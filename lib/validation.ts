@@ -84,3 +84,7 @@ export const notificationReadSchema = z.object({
   id: z.number().int().positive().optional(),
   all: z.boolean().optional(),
 }).refine((value) => value.all || value.id, { message: "id or all is required" });
+
+export const penaltyObjectionSchema = z.object({
+  text: z.string().trim().min(2).max(1000),
+});
