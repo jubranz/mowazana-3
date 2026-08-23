@@ -329,6 +329,11 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .installments-toggle { width: 100%; min-height: 45px; display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 0; border: 0; border-top: 1px dashed var(--border); background: transparent; color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
 .installments-toggle svg { transition: transform .18s ease; }
 .installments-toggle svg.rotate { transform: rotate(-90deg); }
+.previous-loans-toggle { width: 100%; min-height: 54px; display: flex; align-items: center; justify-content: space-between; margin-top: 18px; padding: 0 15px; border: 1px dashed var(--border); border-radius: 17px; background: rgba(255,255,255,.56); color: var(--green-dark); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.previous-loans-toggle > span { display: flex; align-items: center; gap: 8px; }
+.previous-loans-toggle svg { transition: transform .18s ease; }
+.previous-loans-toggle svg.rotate { transform: rotate(-90deg); }
+.previous-loan-card { opacity: .8; }
 .installment-history { margin-top: 2px; border-top: 1px solid var(--border); }
 .installment-history-row { min-height: 66px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
 .installment-history-row > div { display: grid; gap: 4px; }
@@ -405,6 +410,14 @@ input::placeholder { color: #a6afaa; }
 .target-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .target-switch button:disabled { opacity: .4; cursor: not-allowed; }
 .field-hint { color: var(--muted); font-size: 10px; margin-top: -2px; }
+.full-payment-option { display: grid; grid-template-columns: 1fr auto; gap: 9px; align-items: center; padding: 13px; border: 1px solid rgba(45,111,83,.16); border-radius: 17px; background: #edf6ef; }
+.full-payment-option > div { display: grid; gap: 4px; }
+.full-payment-option span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.full-payment-option strong { font-size: 25px; line-height: 1; }
+.full-payment-option button { min-height: 43px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 13px; background: var(--green-dark); color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.full-payment-option button:disabled { opacity: .45; cursor: not-allowed; }
+.full-payment-option .partial-payment-trigger { grid-column: 1 / -1; min-height: 39px; background: transparent; border: 1px solid var(--border); color: var(--green-dark); }
+.full-payment-return { min-height: 42px; border: 1px solid var(--border); border-radius: 13px; background: transparent; color: var(--green-dark); font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
 .date-field { margin-top: 11px; }
 .submit-transaction { width: 100%; min-height: 56px; margin-top: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; border: 0; border-radius: 18px; color: #fff; background: var(--green-dark); font-weight: 850; cursor: pointer; box-shadow: 0 12px 28px rgba(20,61,50,.18); }
 .submit-transaction:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
@@ -483,6 +496,7 @@ input::placeholder { color: #a6afaa; }
 :root[data-theme="dark"] .quick-action small, :root[data-theme="dark"] .field-hint { color: var(--muted); }
 :root[data-theme="dark"] .loan-amounts div, :root[data-theme="dark"] .progress-track, :root[data-theme="dark"] .transaction-tabs, :root[data-theme="dark"] .segmented { background: rgba(255,255,255,.055); }
 :root[data-theme="dark"] .loan-next { background: #3a321f; }:root[data-theme="dark"] .loan-next > div > span, :root[data-theme="dark"] .loan-next > div > small { color: #dbc785; }
+:root[data-theme="dark"] .previous-loans-toggle, :root[data-theme="dark"] .full-payment-option { background: rgba(255,255,255,.055); border-color: var(--border); }
 :root[data-theme="dark"] .money img { filter: brightness(0) invert(1); }
 
 @media (min-width: 760px) {

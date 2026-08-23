@@ -14,6 +14,7 @@ import {
   Download,
   Fuel,
   Gift,
+  History,
   HandCoins,
   LogOut,
   ListTree,
@@ -112,6 +113,7 @@ export function MuwazanaApp() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [paymentLoanId, setPaymentLoanId] = useState<number | null>(null);
+  const [paymentInstallmentId, setPaymentInstallmentId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [demo, setDemo] = useState(false);
@@ -254,14 +256,16 @@ export function MuwazanaApp() {
     setInstallPrompt(null);
   }
 
-  function openLoanPayment(loanId?: number) {
+  function openLoanPayment(loanId?: number, installmentId?: number) {
     setPaymentLoanId(loanId ?? null);
+    setPaymentInstallmentId(installmentId ?? null);
     setSheet("loanPayment");
   }
 
   function closeTransactionSheet() {
     setSheet(null);
     setPaymentLoanId(null);
+    setPaymentInstallmentId(null);
   }
 
   if (screen === "loading") return <LoadingScreen />;
@@ -346,6 +350,7 @@ export function MuwazanaApp() {
             kind={sheet}
             dashboard={dashboard}
             loanId={sheet === "loanPayment" ? paymentLoanId : null}
+            initialInstallmentId={sheet === "loanPayment" ? paymentInstallmentId : null}
             onClose={closeTransactionSheet}
             onSaved={(updated, warning, transaction) => {
               if (updated) setDashboard(updated);
@@ -448,6 +453,7 @@ export function MuwazanaApp() {
           kind={sheet}
           dashboard={dashboard}
           loanId={sheet === "loanPayment" ? paymentLoanId : null}
+          initialInstallmentId={sheet === "loanPayment" ? paymentInstallmentId : null}
           onClose={closeTransactionSheet}
           onSaved={(updated, warning, transaction) => {
             if (updated) setDashboard(updated);
@@ -473,14 +479,18 @@ function LoansPage({
 }: {
   dashboard: DashboardData;
   onBack: () => void;
-  onPayment: (loanId?: number) => void;
+  onPayment: (loanId?: number, installmentId?: number) => void;
   onExpense: () => void;
   onLogout: () => void;
   onRefresh: () => void;
   refreshing: boolean;
 }) {
   const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null);
-  const activeLoans = dashboard.loans.filter((loan) => loan.remainingAmount > 0 || loan.nextInstallment);
+  const [previousLoansOpen, setPreviousLoansOpen] = useState(false);
+  const sortNewestFirst = (loans: DashboardData["loans"]) => [...loans].sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? "") || b.id - a.id);
+  const isPreviousLoan = (loan: DashboardData["loans"][number]) => ["completed", "cancelled"].includes(loan.status);
+  const activeLoans = sortNewestFirst(dashboard.loans.filter((loan) => !isPreviousLoan(loan) && (loan.remainingAmount > 0 || loan.nextInstallment)));
+  const previousLoans = sortNewestFirst(dashboard.loans.filter(isPreviousLoan));
   const totalDebt = activeLoans.reduce((sum, loan) => sum + loan.totalAmount, 0);
   const remainingDebt = activeLoans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
   const paidDebt = Math.max(0, totalDebt - remainingDebt);
@@ -526,7 +536,7 @@ function LoansPage({
               <div className="loan-amounts"><div><span>المدفوع</span><strong><Money value={paid} /></strong></div><div><span>المتبقي</span><strong><Money value={loan.remainingAmount} /></strong></div></div>
               <div className="progress-track loan-progress"><span style={{ width: `${progress}%` }} /></div>
               <small className="loan-total">إجمالي الدين <Money value={loan.totalAmount} /></small>
-              {next ? <div className="loan-next"><div><span>القسط القادم</span><strong><Money value={next.remainingAmount} /></strong><small>{prettyDate(next.dueDate)}</small></div><button onClick={() => onPayment(loan.id)}><HandCoins size={18} /> سداد</button></div> : <div className="loan-settled"><Check size={17} /> لا توجد أقساط مفتوحة لهذا الدين</div>}
+              {next ? <div className="loan-next"><div><span>القسط القادم</span><strong><Money value={next.remainingAmount} /></strong><small>{prettyDate(next.dueDate)}</small></div><button onClick={() => onPayment(loan.id, next.id)}><HandCoins size={18} /> سداد</button></div> : <div className="loan-settled"><Check size={17} /> لا توجد أقساط مفتوحة لهذا الدين</div>}
               {!!loan.pendingPaymentAmount && <small className="loan-pending">سداد قيد المراجعة: <Money value={loan.pendingPaymentAmount} /> — لا يدخل في المدفوع حتى يعتمد</small>}
               <button className="installments-toggle" onClick={() => setExpandedLoanId(expanded ? null : loan.id)} aria-expanded={expanded}><span>{expanded ? "إخفاء الأقساط" : `عرض الأقساط (${installments.length})`}</span><ChevronLeft size={18} className={expanded ? "rotate" : ""} /></button>
               {expanded && <div className="installment-history">
@@ -535,6 +545,27 @@ function LoansPage({
             </article>
           );
         }) : <EmptyState text="لا توجد ديون نشطة الآن" />}
+        {previousLoans.length > 0 && <button className="previous-loans-toggle" onClick={() => setPreviousLoansOpen((open) => !open)} aria-expanded={previousLoansOpen}><span><History size={18} /> {previousLoansOpen ? "إخفاء القروض السابقة" : `القروض السابقة (${previousLoans.length})`}</span><ChevronLeft size={18} className={previousLoansOpen ? "rotate" : ""} /></button>}
+        {previousLoansOpen && previousLoans.map((loan) => {
+          const installments = dashboard.installments
+            .filter((installment) => installment.loanId === loan.id)
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+          const expanded = expandedLoanId === loan.id;
+          const paid = Math.max(0, loan.totalAmount - loan.remainingAmount);
+          const progress = loan.totalAmount ? Math.min(100, (paid / loan.totalAmount) * 100) : 0;
+          return (
+            <article className="loan-detail-card previous-loan-card" key={loan.id}>
+              <div className="loan-detail-head"><div><span>قرض سابق</span><h3>{loan.title}</h3></div><StatusBadge status={loan.status} /></div>
+              <div className="loan-amounts"><div><span>المدفوع</span><strong><Money value={paid} /></strong></div><div><span>المتبقي</span><strong><Money value={loan.remainingAmount} /></strong></div></div>
+              <div className="progress-track loan-progress"><span style={{ width: `${progress}%` }} /></div>
+              <small className="loan-total">إجمالي الدين <Money value={loan.totalAmount} /></small>
+              <button className="installments-toggle" onClick={() => setExpandedLoanId(expanded ? null : loan.id)} aria-expanded={expanded}><span>{expanded ? "إخفاء الأقساط" : `عرض الأقساط (${installments.length})`}</span><ChevronLeft size={18} className={expanded ? "rotate" : ""} /></button>
+              {expanded && <div className="installment-history">
+                {installments.length ? installments.map((installment) => <div className="installment-history-row" key={installment.id}><div><strong>{installment.title}</strong><span>{prettyDate(installment.dueDate)}</span></div><div><strong><Money value={installment.remainingAmount} /></strong><StatusBadge status={installment.status} /></div></div>) : <EmptyState text="لا توجد أقساط مسجلة لهذا الدين" />}
+              </div>}
+            </article>
+          );
+        })}
       </section>
 
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
@@ -617,12 +648,14 @@ function TransactionSheet({
   kind,
   dashboard,
   loanId,
+  initialInstallmentId,
   onClose,
   onSaved,
 }: {
   kind: Exclude<SheetKind, null>;
   dashboard: DashboardData;
   loanId: number | null;
+  initialInstallmentId: number | null;
   onClose: () => void;
   onSaved: (dashboard?: DashboardData, warning?: string, transaction?: FinancialTransaction) => void;
 }) {
@@ -632,17 +665,19 @@ function TransactionSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayInRiyadh());
   const installmentOnly = kind === "loanPayment";
+  const [partialPayment, setPartialPayment] = useState(false);
   const [targetType] = useState<"general" | "installment">(installmentOnly ? "installment" : "general");
-  const payableInstallments = dashboard.installments.filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && !item.hasPendingPayment && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active" && (loanId === null || item.loanId === loanId));
-  const [installmentId, setInstallmentId] = useState<number | undefined>(payableInstallments[0]?.id);
+  const payableInstallments = dashboard.installments.filter((item) => !["paid", "cancelled", "carried_forward"].includes(item.status) && !item.hasPendingPayment && dashboard.loans.find((loan) => loan.id === item.loanId)?.status === "active" && (loanId === null || item.loanId === loanId)).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const [installmentId, setInstallmentId] = useState<number | undefined>(() => payableInstallments.find((item) => item.id === initialInstallmentId)?.id ?? payableInstallments[0]?.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const numericAmount = Number(amount || 0);
 
   const selectedInstallment = useMemo(
     () => dashboard.installments.find((item) => item.id === installmentId),
     [dashboard.installments, installmentId],
   );
+  const amountInputVisible = !installmentOnly || partialPayment;
+  const numericAmount = amountInputVisible ? Number(amount || 0) : selectedInstallment?.remainingAmount ?? 0;
 
   function pressAmount(key: string) {
     setError("");
@@ -683,8 +718,7 @@ function TransactionSheet({
       <section className="transaction-sheet">
         <div className="sheet-handle" />
         <header><div><span>{kind === "expense" ? "عملية جديدة" : "إثبات دفعة"}</span><h2>{kind === "expense" ? "سجّل سحبًا" : installmentOnly ? "سجّل سداد قسط" : "سجّل إيداعًا"}</h2></div><button onClick={onClose} aria-label="إغلاق"><X size={22} /></button></header>
-        <div className="amount-display"><span>المبلغ</span><strong><Money value={numericAmount} /></strong></div>
-        <NumericPad mode="amount" onKey={pressAmount} disabled={busy} />
+        {amountInputVisible && <><div className="amount-display"><span>المبلغ</span><strong><Money value={numericAmount} /></strong></div><NumericPad mode="amount" onKey={pressAmount} disabled={busy} /></>}
 
         {kind === "expense" ? (
           <div className="form-section">
@@ -706,15 +740,16 @@ function TransactionSheet({
             {targetType === "installment" && (
               payableInstallments.length ? <label><span>اختر القسط</span><select value={installmentId} onChange={(event) => setInstallmentId(Number(event.target.value))}>{payableInstallments.map((item) => <option value={item.id} key={item.id}>{item.title} — {money(item.remainingAmount)} ﷼</option>)}</select>{selectedInstallment && <small className="field-hint">متبقي <Money value={selectedInstallment.remainingAmount} /> · {prettyDate(selectedInstallment.dueDate)}</small>}</label> : <Alert message="لا توجد أقساط متاحة لهذا الدين حاليًا." />
             )}
-            <label><span>ملاحظة <em>اختياري</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="مثال: حوالة بنكية" /></label>
+            {installmentOnly && selectedInstallment && (!partialPayment ? <div className="full-payment-option"><div><span>سداد كامل القسط</span><strong><Money value={selectedInstallment.remainingAmount} /></strong></div><button onClick={submit} disabled={busy || selectedInstallment.remainingAmount <= 0}>{busy ? "جارٍ الحفظ…" : <><Check size={19} /> سداد كامل القسط</>}</button><button className="partial-payment-trigger" onClick={() => { setAmount(""); setPartialPayment(true); }}>سداد جزئي</button></div> : <button className="full-payment-return" onClick={() => { setAmount(""); setPartialPayment(false); }}>العودة لخيار السداد الكامل</button>)}
+            {(!installmentOnly || amountInputVisible) && <label><span>ملاحظة <em>اختياري</em></span><input value={note} onChange={(event) => setNote(event.target.value)} maxLength={240} placeholder="مثال: حوالة بنكية" /></label>}
           </div>
         )}
 
-        <label className="date-field"><span>التاريخ</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        {(!installmentOnly || amountInputVisible) && <label className="date-field"><span>التاريخ</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>}
         {error && <Alert message={error} />}
-        <button className="submit-transaction" onClick={submit} disabled={busy || !numericAmount}>
+        {amountInputVisible && <button className="submit-transaction" onClick={submit} disabled={busy || !numericAmount}>
           {busy ? "جارٍ الحفظ…" : <><Check size={21} /> تأكيد وإرسال للمراجعة</>}
-        </button>
+        </button>}
         <p className="pending-note"><ShieldCheck size={14} /> لن يؤثر المبلغ في الرصيد قبل اعتماده.</p>
       </section>
     </div>
