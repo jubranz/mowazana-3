@@ -33,7 +33,7 @@ import {
 import { AdminDashboard } from "@/components/admin-dashboard";
 import { NotificationsPage } from "@/components/notifications-page";
 import { PenaltyDetailsDialog } from "@/components/penalty-details-dialog";
-import { statusLabel, transactionDisplayStatus } from "@/lib/finance";
+import { isVisibleLoanStatus, statusLabel, transactionDisplayStatus } from "@/lib/finance";
 import type {
   CanonicalStatus,
   DashboardData,
@@ -488,13 +488,15 @@ function LoansPage({
   const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null);
   const [previousLoansOpen, setPreviousLoansOpen] = useState(false);
   const sortNewestFirst = (loans: DashboardData["loans"]) => [...loans].sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? "") || b.id - a.id);
-  const isPreviousLoan = (loan: DashboardData["loans"][number]) => ["completed", "cancelled"].includes(loan.status);
-  const activeLoans = sortNewestFirst(dashboard.loans.filter((loan) => !isPreviousLoan(loan) && (loan.remainingAmount > 0 || loan.nextInstallment)));
-  const previousLoans = sortNewestFirst(dashboard.loans.filter(isPreviousLoan));
+  const visibleLoans = dashboard.loans.filter((loan) => isVisibleLoanStatus(loan.status));
+  const visibleLoanIds = new Set(visibleLoans.map((loan) => loan.id));
+  const isPreviousLoan = (loan: DashboardData["loans"][number]) => loan.status === "completed";
+  const activeLoans = sortNewestFirst(visibleLoans.filter((loan) => !isPreviousLoan(loan) && (loan.remainingAmount > 0 || loan.nextInstallment)));
+  const previousLoans = sortNewestFirst(visibleLoans.filter(isPreviousLoan));
   const totalDebt = activeLoans.reduce((sum, loan) => sum + loan.totalAmount, 0);
   const remainingDebt = activeLoans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
   const paidDebt = Math.max(0, totalDebt - remainingDebt);
-  const openInstallments = dashboard.installments.filter((installment) => !["paid", "cancelled", "carried_forward"].includes(installment.status));
+  const openInstallments = dashboard.installments.filter((installment) => visibleLoanIds.has(installment.loanId) && !["paid", "cancelled", "carried_forward"].includes(installment.status));
   const monthlyDue = dashboard.obligations.monthlyInstallments;
   const earliestDue = [...openInstallments].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
 
@@ -524,7 +526,7 @@ function LoansPage({
         <div className="section-title"><div><span>{activeLoans.length} ديون نشطة</span><h2>كل دين على حدة</h2></div></div>
         {activeLoans.length ? activeLoans.map((loan) => {
           const installments = dashboard.installments
-            .filter((installment) => installment.loanId === loan.id)
+            .filter((installment) => visibleLoanIds.has(installment.loanId) && installment.loanId === loan.id)
             .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
           const next = installments.find((installment) => !["paid", "cancelled"].includes(installment.status));
           const paid = Math.max(0, loan.totalAmount - loan.remainingAmount);
@@ -548,7 +550,7 @@ function LoansPage({
         {previousLoans.length > 0 && <button className="previous-loans-toggle" onClick={() => setPreviousLoansOpen((open) => !open)} aria-expanded={previousLoansOpen}><span><History size={18} /> {previousLoansOpen ? "إخفاء القروض السابقة" : `القروض السابقة (${previousLoans.length})`}</span><ChevronLeft size={18} className={previousLoansOpen ? "rotate" : ""} /></button>}
         {previousLoansOpen && previousLoans.map((loan) => {
           const installments = dashboard.installments
-            .filter((installment) => installment.loanId === loan.id)
+            .filter((installment) => visibleLoanIds.has(installment.loanId) && installment.loanId === loan.id)
             .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
           const expanded = expandedLoanId === loan.id;
           const paid = Math.max(0, loan.totalAmount - loan.remainingAmount);

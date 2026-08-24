@@ -137,6 +137,11 @@ export function calculateObligations(
   return { debt, monthlyInstallments, monthlyRequired: moneyRound(debt + monthlyInstallments), monthEnd };
 }
 
+/** Cancelled loans and all of their schedules are excluded from the product. */
+export function isVisibleLoanStatus(status: LoanStatus | "unknown"): boolean {
+  return status !== "cancelled";
+}
+
 export function statusLabel(status: CanonicalStatus): string {
   const labels: Record<CanonicalStatus, string> = {
     pending: "قيد المراجعة",

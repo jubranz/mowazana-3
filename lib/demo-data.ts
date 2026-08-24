@@ -1,4 +1,4 @@
-import { calculateBalance, calculateLoanTerms, calculateObligations, splitInstallments } from "./finance";
+import { calculateBalance, calculateLoanTerms, calculateObligations, isVisibleLoanStatus, splitInstallments } from "./finance";
 import type {
   AdminDashboardData,
   CreateAdminTransactionInput,
@@ -95,14 +95,15 @@ function withObjectionState(item: FinancialTransaction): FinancialTransaction {
 }
 
 function memberLoans(memberId: number): { loans: LoanSummary[]; installments: Installment[] } {
-  const installments = state.installments[memberId] ?? [];
-  const loans = (state.loans[memberId] ?? []).map((loan) => ({
+  const loans = (state.loans[memberId] ?? []).filter((loan) => isVisibleLoanStatus(loan.status));
+  const loanIds = new Set(loans.map((loan) => loan.id));
+  const installments = (state.installments[memberId] ?? []).filter((item) => loanIds.has(item.loanId));
+  return { loans: loans.map((loan) => ({
     ...loan,
     nextInstallment: installments
       .filter((item) => item.loanId === loan.id && !["paid", "cancelled", "carried_forward"].includes(item.status))
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] ?? null,
-  }));
-  return { loans, installments };
+  })), installments };
 }
 
 export function getDemoDashboard(memberId: number): DashboardData {

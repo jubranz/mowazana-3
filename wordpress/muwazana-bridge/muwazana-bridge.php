@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Muwazana Bridge
  * Description: Secure, member-scoped REST bridge between the Muwazana PWA and JetEngine/WordPress data.
- * Version: 2.3.0
+ * Version: 2.3.1
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Muwazana
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const VERSION = '2.3.0';
+const VERSION = '2.3.1';
 const CAPABILITY = 'muwazana_api_access';
 const MANAGE_CAPABILITY = 'muwazana_manage_finances';
 const META_ENABLED = '_muwazana_enabled';
@@ -421,7 +421,15 @@ function dashboard_endpoint(WP_REST_Request $request): WP_REST_Response|WP_Error
     $penalties = member_rows('penalty', $member_id);
     $rewards = member_rewards($member_id);
     $loan_payments = member_rows('loan_payments', $member_id);
-    $loans = member_loans($member_id);
+    // A cancelled loan is removed from the member-facing financial model.
+    // Its legacy schedules and payments must not reappear beside a replacement loan.
+    $all_loans = member_loans($member_id);
+    $cancelled_loan_ids = array_map(
+        static fn(array $loan): int => absint($loan['_ID'] ?? 0),
+        array_filter($all_loans, static fn(array $loan): bool => normalize_status($loan['status'] ?? '') === 'cancelled')
+    );
+    $loans = array_values(array_filter($all_loans, static fn(array $loan): bool => normalize_status($loan['status'] ?? '') !== 'cancelled'));
+    $loan_payments = array_values(array_filter($loan_payments, static fn(array $payment): bool => ! in_array(absint($payment['loan_id'] ?? 0), $cancelled_loan_ids, true)));
     $schedules = member_schedules($member_id, array_column($loans, '_ID'));
 
     $totals = [
@@ -1064,7 +1072,8 @@ function member_schedules(int $member_id, array $loan_ids): array
     foreach ($rows as $row) {
         $unique[(int) $row['_ID']] = $row;
     }
-    return array_values($unique);
+    $allowed_loan_ids = array_flip(array_map('absint', $loan_ids));
+    return array_values(array_filter($unique, static fn(array $row): bool => isset($allowed_loan_ids[absint($row['loan_id'] ?? 0)])));
 }
 
 /**
@@ -1122,7 +1131,7 @@ function ensure_next_schedule(array $loan): ?array
         $count = absint($loan['installment_count'] ?? 0);
         $monthly_amount = $count > 0 ? round($remaining / $count, 2) : 0;
     }
-    if (! $loan_id || ! $member_id || $remaining <= 0 || $monthly_amount <= 0) {
+    if (normalize_status($loan['status'] ?? '') !== 'active' || ! $loan_id || ! $member_id || $remaining <= 0 || $monthly_amount <= 0) {
         return null;
     }
 
@@ -1753,10 +1762,18 @@ function all_cct_rows(string $slug): array
 
 function admin_all_transactions(): array
 {
+    $cancelled_loan_ids = array_flip(array_map(
+        static fn(array $loan): int => absint($loan['_ID'] ?? 0),
+        array_filter(all_cct_rows('loans'), static fn(array $loan): bool => normalize_status($loan['status'] ?? '') === 'cancelled')
+    ));
+    $loan_payments = array_values(array_filter(
+        rows_to_transactions(all_cct_rows('loan_payments'), 'loan_payment'),
+        static fn(array $payment): bool => ! isset($cancelled_loan_ids[absint($payment['loanId'] ?? 0)])
+    ));
     $items = array_merge(
         rows_to_transactions(all_cct_rows('expense'), 'expense'),
         rows_to_transactions(all_cct_rows('payment'), 'payment'),
-        rows_to_transactions(all_cct_rows('loan_payments'), 'loan_payment'),
+        $loan_payments,
         rows_to_transactions(all_cct_rows('penalty'), 'penalty'),
         rows_to_transactions(all_rewards(), 'reward')
     );
@@ -1796,18 +1813,23 @@ function admin_dashboard_endpoint(WP_REST_Request $request): WP_REST_Response|WP
         $actor_id
     ), ARRAY_A) ?: [];
     $schedule_table = cct_table('loan_schedules');
-    $loan_table = cct_table('loans');
-    $overdue = table_exists($schedule_table) ? (int) $wpdb->get_var("SELECT COUNT(*) FROM {$schedule_table} WHERE status = 'overdue'") : 0;
-    $active_loans = table_exists($loan_table) ? (int) $wpdb->get_var("SELECT COUNT(*) FROM {$loan_table} WHERE status IN ('active','نشط')") : 0;
+    $loans_by_id = [];
+    foreach (all_cct_rows('loans') as $loan_row) {
+        $loans_by_id[absint($loan_row['_ID'] ?? 0)] = $loan_row;
+    }
+    $active_loans = count(array_filter($loans_by_id, static fn(array $loan): bool => normalize_status($loan['status'] ?? '') === 'active'));
+    $overdue = 0;
     $profiles = profiles_endpoint()->get_data();
     $admin_installments = [];
     if (table_exists($schedule_table)) {
         foreach (($wpdb->get_results("SELECT * FROM {$schedule_table} WHERE status NOT IN ('paid','cancelled','carried_forward') ORDER BY due_date ASC LIMIT 1000", ARRAY_A) ?: []) as $schedule_row) {
+            $schedule_loan = $loans_by_id[absint($schedule_row['loan_id'] ?? 0)] ?? null;
+            if (! $schedule_loan || normalize_status($schedule_loan['status'] ?? '') !== 'active') continue;
+            if (normalize_status($schedule_row['status'] ?? '') === 'overdue') $overdue++;
             $schedule_item = schedule_payload($schedule_row);
             $schedule_item['memberId'] = absint($schedule_row['user_id'] ?? $schedule_row['cct_author_id'] ?? 0);
             if (! $schedule_item['memberId']) {
-                $schedule_loan = cct_row('loans', absint($schedule_row['loan_id'] ?? 0));
-                $schedule_item['memberId'] = $schedule_loan ? loan_member_id($schedule_loan) : 0;
+                $schedule_item['memberId'] = loan_member_id($schedule_loan);
             }
             $admin_installments[] = $schedule_item;
         }

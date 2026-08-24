@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateBalance, calculateLoanTerms, calculateObligations, normalizeStatus, splitInstallments, toAmount } from "@/lib/finance";
+import { calculateBalance, calculateLoanTerms, calculateObligations, isVisibleLoanStatus, normalizeStatus, splitInstallments, toAmount } from "@/lib/finance";
 
 describe("authoritative balance", () => {
   it("starts at zero", () => {
@@ -63,6 +63,13 @@ describe("monthly obligations", () => {
   it("does not use positive credit to reduce installment obligations", () => {
     const installments = [{ id: 1, loanId: 1, title: "قسط", amount: 100, paidAmount: 0, remainingAmount: 100, dueDate: "2026-08-30", status: "upcoming" as const }];
     expect(calculateObligations(300, installments, loans, new Date("2026-08-21T09:00:00Z")).monthlyRequired).toBe(100);
+  });
+
+  it("excludes schedules belonging to a cancelled loan", () => {
+    const cancelledLoan = [{ id: 9, status: "cancelled" as const }];
+    const installments = [{ id: 9, loanId: 9, title: "قسط ملغي", amount: 700, paidAmount: 0, remainingAmount: 700, dueDate: "2026-08-15", status: "overdue" as const }];
+    expect(calculateObligations(0, installments, cancelledLoan, new Date("2026-08-21T09:00:00Z")).monthlyInstallments).toBe(0);
+    expect(isVisibleLoanStatus("cancelled")).toBe(false);
   });
 });
 
