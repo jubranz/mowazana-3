@@ -374,7 +374,7 @@ export function MuwazanaApp() {
           <p>مساء الخير، {dashboard.member.name}</p>
         </div>
         <div className="header-actions">
-          {dashboard.member.canManage && <button className="icon-button admin-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /></button>}
+          {dashboard.member.canManage && <button className="icon-button admin-button manager-access-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /><span>لوحة المدير</span></button>}
           <button className="icon-button notification-button" onClick={() => setScreen("notifications")} aria-label="الإشعارات"><Bell size={20} />{dashboard.unreadNotifications > 0 && <span>{Math.min(9, dashboard.unreadNotifications)}</span>}</button>
           {installPrompt && <button className="icon-button install-button" onClick={installApp} aria-label="تثبيت التطبيق"><Download size={20} /></button>}
           <button className="icon-button" onClick={() => void loadDashboard()} disabled={busy} aria-label="تحديث البيانات">
