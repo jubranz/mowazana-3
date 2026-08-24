@@ -12,6 +12,7 @@ import {
   Check,
   ChevronLeft,
   Download,
+  Eye,
   Fuel,
   Gift,
   History,
@@ -43,7 +44,7 @@ import type {
   TransactionStatus,
 } from "@/lib/types";
 
-type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans" | "notifications" | "admin";
+type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans" | "notifications" | "admin" | "managerMembers";
 type SheetKind = "expense" | "payment" | "loanPayment" | null;
 
 interface BeforeInstallPromptEvent extends Event {
@@ -111,6 +112,8 @@ export function MuwazanaApp() {
   const [selectedProfile, setSelectedProfile] = useState<MemberProfile | null>(null);
   const [pin, setPin] = useState("");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [managerProfiles, setManagerProfiles] = useState<MemberProfile[]>([]);
+  const [previewMemberId, setPreviewMemberId] = useState<number | null>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [paymentLoanId, setPaymentLoanId] = useState<number | null>(null);
   const [paymentInstallmentId, setPaymentInstallmentId] = useState<number | null>(null);
@@ -125,10 +128,12 @@ export function MuwazanaApp() {
   const [transactionsBusy, setTransactionsBusy] = useState(false);
   const transactionsPerPage = 5;
 
-  const loadDashboard = useCallback(async (silent = false) => {
+  const loadDashboard = useCallback(async (silent = false, targetMemberId?: number | null) => {
     if (!silent) setBusy(true);
     try {
-      const response = await fetch("/api/me/dashboard", { cache: "no-store" });
+      const viewedMemberId = targetMemberId === undefined ? previewMemberId : targetMemberId;
+      const endpoint = viewedMemberId ? `/api/admin/members/${viewedMemberId}/dashboard` : "/api/me/dashboard";
+      const response = await fetch(endpoint, { cache: "no-store" });
       if (response.status === 401) return false;
       const data = await readJson<DashboardData>(response);
       setDashboard(data);
@@ -141,17 +146,19 @@ export function MuwazanaApp() {
     } finally {
       if (!silent) setBusy(false);
     }
-  }, []);
+  }, [previewMemberId]);
 
   const loadTransactions = useCallback(async (status: string, page: number) => {
     setTransactionsBusy(true);
     try {
-      const result = await readJson<PagedTransactions>(await fetch(`/api/me/transactions?scope=short&status=${status}&page=${page}&perPage=${transactionsPerPage}`, { cache: "no-store" }));
+      const query = `scope=short&status=${status}&page=${page}&perPage=${transactionsPerPage}`;
+      const endpoint = previewMemberId ? `/api/admin/members/${previewMemberId}/transactions?${query}` : `/api/me/transactions?${query}`;
+      const result = await readJson<PagedTransactions>(await fetch(endpoint, { cache: "no-store" }));
       setTransactionData(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر تحميل العمليات.");
     } finally { setTransactionsBusy(false); }
-  }, []);
+  }, [previewMemberId]);
 
   const loadProfiles = useCallback(async () => {
     setBusy(true);
@@ -246,7 +253,39 @@ export function MuwazanaApp() {
     setDashboard(null);
     setSelectedProfile(null);
     setPin("");
+    setPreviewMemberId(null);
     await loadProfiles();
+  }
+
+  async function openMemberPreview() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await readJson<{ profiles: MemberProfile[] }>(await fetch("/api/admin/dashboard?perPage=1", { cache: "no-store" }));
+      setManagerProfiles(data.profiles);
+      setScreen("managerMembers");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تحميل الأعضاء.");
+    } finally { setBusy(false); }
+  }
+
+  async function startMemberPreview(profile: MemberProfile) {
+    setBusy(true);
+    setError("");
+    try {
+      setPreviewMemberId(profile.id);
+      const loaded = await loadDashboard(true, profile.id);
+      if (!loaded) setPreviewMemberId(null);
+    } finally { setBusy(false); }
+  }
+
+  async function stopMemberPreview() {
+    setBusy(true);
+    setError("");
+    try {
+      setPreviewMemberId(null);
+      await loadDashboard(true, null);
+    } finally { setBusy(false); }
   }
 
   async function installApp() {
@@ -325,10 +364,32 @@ export function MuwazanaApp() {
     );
   }
 
+  if (screen === "managerMembers") {
+    return (
+      <main className="auth-shell">
+        <button className="back-button" onClick={() => setScreen("dashboard")} aria-label="العودة للرئيسية"><ArrowLeft size={20} /> الرئيسية</button>
+        <section className="auth-card profile-card">
+          <div className="eyebrow"><Eye size={16} /> معاينة المدير</div>
+          <h1>اختر عضوًا</h1>
+          <p className="muted">ستشاهد حسابه كما يراه، دون إمكانية إجراء أي تعديل أو عملية باسمه.</p>
+          {error && <Alert message={error} />}
+          <div className="profile-grid">
+            {managerProfiles.map((profile) => <button className="profile-button" key={profile.id} onClick={() => void startMemberPreview(profile)} disabled={busy}>
+              <span className="profile-avatar" style={{ background: profile.color }}>{profile.initials}</span>
+              <span>{profile.name}</span><ChevronLeft size={18} aria-hidden="true" />
+            </button>)}
+          </div>
+          {busy && <p className="checking">جارٍ فتح الحساب…</p>}
+        </section>
+      </main>
+    );
+  }
+
   if (!dashboard) return <LoadingScreen />;
 
   const owed = dashboard.balance < 0 ? Math.abs(dashboard.balance) : 0;
   const credit = dashboard.balance > 0 ? dashboard.balance : 0;
+  const isPreviewingMember = previewMemberId !== null;
 
   if (screen === "notifications") return <NotificationsPage onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
   if (screen === "admin" && dashboard.member.canManage) return <AdminDashboard onBack={() => { setScreen("dashboard"); void loadDashboard(true); }} />;
@@ -341,6 +402,7 @@ export function MuwazanaApp() {
           onBack={() => setScreen("dashboard")}
           onPayment={openLoanPayment}
           onExpense={() => setSheet("expense")}
+          readOnly={isPreviewingMember}
           onLogout={() => void logout()}
           onRefresh={() => void loadDashboard()}
           refreshing={busy}
@@ -374,8 +436,9 @@ export function MuwazanaApp() {
           <p>مساء الخير، {dashboard.member.name}</p>
         </div>
         <div className="header-actions">
-          {dashboard.member.canManage && <button className="icon-button admin-button manager-access-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /><span>لوحة المدير</span></button>}
-          <button className="icon-button notification-button" onClick={() => setScreen("notifications")} aria-label="الإشعارات"><Bell size={20} />{dashboard.unreadNotifications > 0 && <span>{Math.min(9, dashboard.unreadNotifications)}</span>}</button>
+          {!isPreviewingMember && dashboard.member.canManage && <button className="icon-button admin-button manager-access-button" onClick={() => setScreen("admin")} aria-label="لوحة المدير"><LayoutDashboard size={20} /><span>لوحة المدير</span></button>}
+          {!isPreviewingMember && dashboard.member.canManage && <button className="icon-button manager-access-button" onClick={() => void openMemberPreview()} disabled={busy} aria-label="معاينة حساب عضو"><Eye size={20} /><span>معاينة عضو</span></button>}
+          {!isPreviewingMember && <button className="icon-button notification-button" onClick={() => setScreen("notifications")} aria-label="الإشعارات"><Bell size={20} />{dashboard.unreadNotifications > 0 && <span>{Math.min(9, dashboard.unreadNotifications)}</span>}</button>}
           {installPrompt && <button className="icon-button install-button" onClick={installApp} aria-label="تثبيت التطبيق"><Download size={20} /></button>}
           <button className="icon-button" onClick={() => void loadDashboard()} disabled={busy} aria-label="تحديث البيانات">
             <RefreshCw size={20} className={busy ? "spin" : ""} />
@@ -388,6 +451,7 @@ export function MuwazanaApp() {
       </header>
 
       {demo && <div className="demo-ribbon">وضع العرض — بيانات تجريبية</div>}
+      {isPreviewingMember && <div className="manager-preview-banner"><Eye size={16} /> أنت تشاهد حساب {dashboard.member.name} للعرض فقط <button onClick={() => void stopMemberPreview()}>العودة إلى حسابي</button></div>}
       {error && <Alert message={error} onClose={() => setError("")} />}
 
       <section className={`balance-card ${dashboard.obligations.monthlyRequired > 0 ? "balance-negative" : "balance-positive"}`}>
@@ -405,16 +469,17 @@ export function MuwazanaApp() {
       </section>
 
       <section className="quick-actions" aria-label="إجراءات سريعة">
-        <button className="quick-action expense-action" onClick={() => setSheet("expense")}>
+        {!isPreviewingMember && <button className="quick-action expense-action" onClick={() => setSheet("expense")}>
           <span><Plus size={24} /></span>
           <div><strong>سجّل سحبًا</strong><small>في ثوانٍ</small></div>
           <ChevronLeft size={20} />
-        </button>
-        <button className="quick-action payment-action" onClick={() => setSheet("payment")}>
+        </button>}
+        {!isPreviewingMember && <button className="quick-action payment-action" onClick={() => setSheet("payment")}>
           <span><HandCoins size={24} /></span>
           <div><strong>سجّل إيداعًا</strong><small>للدين القصير</small></div>
           <ChevronLeft size={20} />
-        </button>
+        </button>}
+        {isPreviewingMember && <div className="manager-preview-actions"><Eye size={21} /><div><strong>وضع المعاينة</strong><small>تعرض بيانات العضو فقط؛ لا يمكن تسجيل عمليات باسمه.</small></div></div>}
       </section>
 
       <section className="section-block">
@@ -430,7 +495,7 @@ export function MuwazanaApp() {
         <div className="section-title"><div><span>آخر التحديثات</span><h2>العمليات الأخيرة</h2></div></div>
         <div className="transaction-tabs" role="tablist" aria-label="حالة العمليات">{([{ value: "approved", label: "معتمد" }, { value: "pending", label: "بانتظار المراجعة" }, { value: "rejected", label: "مرفوض" }] as const).map((tab) => <button role="tab" aria-selected={transactionTab === tab.value} className={transactionTab === tab.value ? "active" : ""} key={tab.value} onClick={() => { setTransactionTab(tab.value); setTransactionPage(1); }}>{tab.label}</button>)}</div>
         <div className="transaction-list">
-          {transactionsBusy ? <div className="empty-state"><RefreshCw size={21} className="spin" /><span>جارٍ تحميل العمليات…</span></div> : transactionData.transactions.length ? transactionData.transactions.map((item) => <TransactionRow item={item} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات في هذه الحالة" />}
+          {transactionsBusy ? <div className="empty-state"><RefreshCw size={21} className="spin" /><span>جارٍ تحميل العمليات…</span></div> : transactionData.transactions.length ? transactionData.transactions.map((item) => <TransactionRow item={item} readOnly={isPreviewingMember} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات في هذه الحالة" />}
         </div>
         {transactionData.totalPages > 1 && (
           <nav className="transaction-pagination" aria-label="صفحات العمليات">
@@ -444,8 +509,8 @@ export function MuwazanaApp() {
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
         <button className="active"><WalletCards size={21} /><span>الرئيسية</span></button>
         <button onClick={() => setScreen("loans")}><ListTree size={21} /><span>الأقساط</span></button>
-        <button onClick={() => setSheet("expense")}><Plus size={22} /><span>سحب</span></button>
-        <button onClick={() => setSheet("payment")}><HandCoins size={21} /><span>إيداع</span></button>
+        {!isPreviewingMember && <button onClick={() => setSheet("expense")}><Plus size={22} /><span>سحب</span></button>}
+        {!isPreviewingMember && <button onClick={() => setSheet("payment")}><HandCoins size={21} /><span>إيداع</span></button>}
       </nav>
 
       {sheet && (
@@ -476,6 +541,7 @@ function LoansPage({
   onLogout,
   onRefresh,
   refreshing,
+  readOnly,
 }: {
   dashboard: DashboardData;
   onBack: () => void;
@@ -484,6 +550,7 @@ function LoansPage({
   onLogout: () => void;
   onRefresh: () => void;
   refreshing: boolean;
+  readOnly: boolean;
 }) {
   const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null);
   const [previousLoansOpen, setPreviousLoansOpen] = useState(false);
@@ -538,7 +605,7 @@ function LoansPage({
               <div className="loan-amounts"><div><span>المدفوع</span><strong><Money value={paid} /></strong></div><div><span>المتبقي</span><strong><Money value={loan.remainingAmount} /></strong></div></div>
               <div className="progress-track loan-progress"><span style={{ width: `${progress}%` }} /></div>
               <small className="loan-total">إجمالي الدين <Money value={loan.totalAmount} /></small>
-              {next ? <div className="loan-next"><div><span>القسط القادم</span><strong><Money value={next.remainingAmount} /></strong><small>{prettyDate(next.dueDate)}</small></div><button onClick={() => onPayment(loan.id, next.id)}><HandCoins size={18} /> سداد</button></div> : <div className="loan-settled"><Check size={17} /> لا توجد أقساط مفتوحة لهذا الدين</div>}
+              {next ? <div className="loan-next"><div><span>القسط القادم</span><strong><Money value={next.remainingAmount} /></strong><small>{prettyDate(next.dueDate)}</small></div>{!readOnly && <button onClick={() => onPayment(loan.id, next.id)}><HandCoins size={18} /> سداد</button>}</div> : <div className="loan-settled"><Check size={17} /> لا توجد أقساط مفتوحة لهذا الدين</div>}
               {!!loan.pendingPaymentAmount && <small className="loan-pending">سداد قيد المراجعة: <Money value={loan.pendingPaymentAmount} /> — لا يدخل في المدفوع حتى يعتمد</small>}
               <button className="installments-toggle" onClick={() => setExpandedLoanId(expanded ? null : loan.id)} aria-expanded={expanded}><span>{expanded ? "إخفاء الأقساط" : `عرض الأقساط (${installments.length})`}</span><ChevronLeft size={18} className={expanded ? "rotate" : ""} /></button>
               {expanded && <div className="installment-history">
@@ -573,8 +640,8 @@ function LoansPage({
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">
         <button onClick={onBack}><WalletCards size={21} /><span>الرئيسية</span></button>
         <button className="active"><ListTree size={21} /><span>الأقساط</span></button>
-        <button onClick={onExpense}><Plus size={22} /><span>سحب</span></button>
-        <button onClick={() => onPayment()}><HandCoins size={21} /><span>سداد قسط</span></button>
+        {!readOnly && <button onClick={onExpense}><Plus size={22} /><span>سحب</span></button>}
+        {!readOnly && <button onClick={() => onPayment()}><HandCoins size={21} /><span>سداد قسط</span></button>}
       </nav>
     </main>
   );
@@ -609,14 +676,14 @@ function ObligationCard({ icon: Icon, title, value, subtitle, tone, featured = f
   return <article className={`obligation-card ${tone} ${featured ? "featured" : ""}`}><span className="metric-icon"><Icon size={22} /></span><p>{title}</p><strong><Money value={value} /></strong><small>{subtitle}</small></article>;
 }
 
-function TransactionRow({ item }: { item: FinancialTransaction }) {
+function TransactionRow({ item, readOnly = false }: { item: FinancialTransaction; readOnly?: boolean }) {
   const meta = transactionMeta(item.type);
   const positive = item.type === "payment" || item.type === "reward" || item.type === "loan_payment";
   const [detailsOpen, setDetailsOpen] = useState(false);
   return (
     <article className="transaction-row">
       <span className={`transaction-icon ${meta.tone}`}>{meta.icon}</span>
-      <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span>{item.type === "penalty" && <button className="penalty-details-button" onClick={() => setDetailsOpen(true)}>اضغط للتفاصيل</button>}</div>
+      <div className="transaction-copy"><strong>{transactionTitle(item, meta.label)}</strong><span>{prettyDateTime(item.date)}{item.note ? ` · ${item.note}` : ""}</span>{item.type === "penalty" && !readOnly && <button className="penalty-details-button" onClick={() => setDetailsOpen(true)}>اضغط للتفاصيل</button>}</div>
       <div className="transaction-value"><strong className={positive ? "positive" : "negative"}><Money value={item.amount} sign={positive ? "+" : "−"} /></strong><StatusBadge status={transactionDisplayStatus(item)} /></div>
       {detailsOpen && <PenaltyDetailsDialog transaction={item} onClose={() => setDetailsOpen(false)} onSubmitted={() => window.location.reload()} />}
     </article>
