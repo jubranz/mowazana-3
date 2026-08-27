@@ -123,7 +123,7 @@ export function MuwazanaApp() {
   const [offline, setOffline] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [transactionPage, setTransactionPage] = useState(1);
-  const [transactionTab, setTransactionTab] = useState<Extract<TransactionStatus, "approved" | "pending" | "rejected">>("approved");
+  const [transactionTab, setTransactionTab] = useState<"all" | Extract<TransactionStatus, "approved" | "pending" | "rejected">>("all");
   const [transactionData, setTransactionData] = useState<PagedTransactions>({ transactions: [], page: 1, perPage: 5, total: 0, totalPages: 1 });
   const [transactionsBusy, setTransactionsBusy] = useState(false);
   const transactionsPerPage = 5;
@@ -151,7 +151,7 @@ export function MuwazanaApp() {
   const loadTransactions = useCallback(async (status: string, page: number) => {
     setTransactionsBusy(true);
     try {
-      const query = `scope=short&status=${status}&page=${page}&perPage=${transactionsPerPage}`;
+      const query = `scope=short${status === "all" ? "" : `&status=${status}`}&page=${page}&perPage=${transactionsPerPage}`;
       const endpoint = previewMemberId ? `/api/admin/members/${previewMemberId}/transactions?${query}` : `/api/me/transactions?${query}`;
       const result = await readJson<PagedTransactions>(await fetch(endpoint, { cache: "no-store" }));
       setTransactionData(result);
@@ -493,7 +493,7 @@ export function MuwazanaApp() {
 
       <section className="section-block transactions-section">
         <div className="section-title"><div><span>آخر التحديثات</span><h2>العمليات الأخيرة</h2></div></div>
-        <div className="transaction-tabs" role="tablist" aria-label="حالة العمليات">{([{ value: "approved", label: "معتمد" }, { value: "pending", label: "بانتظار المراجعة" }, { value: "rejected", label: "مرفوض" }] as const).map((tab) => <button role="tab" aria-selected={transactionTab === tab.value} className={transactionTab === tab.value ? "active" : ""} key={tab.value} onClick={() => { setTransactionTab(tab.value); setTransactionPage(1); }}>{tab.label}</button>)}</div>
+        <div className="transaction-tabs" role="tablist" aria-label="حالة العمليات">{([{ value: "all", label: "جميع العمليات" }, { value: "approved", label: "معتمد" }, { value: "pending", label: "بانتظار المراجعة" }, { value: "rejected", label: "مرفوض" }] as const).map((tab) => <button role="tab" aria-selected={transactionTab === tab.value} className={transactionTab === tab.value ? "active" : ""} key={tab.value} onClick={() => { setTransactionTab(tab.value); setTransactionPage(1); }}>{tab.label}</button>)}</div>
         <div className="transaction-list">
           {transactionsBusy ? <div className="empty-state"><RefreshCw size={21} className="spin" /><span>جارٍ تحميل العمليات…</span></div> : transactionData.transactions.length ? transactionData.transactions.map((item) => <TransactionRow item={item} readOnly={isPreviewingMember} key={`${item.type}-${item.id}`} />) : <EmptyState text="لا توجد عمليات في هذه الحالة" />}
         </div>
