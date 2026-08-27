@@ -10,7 +10,8 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/adm
   const auth = await requireManagerSession();
   if (!auth.session) return auth.error;
   const { type, id, action } = await context.params;
-  if (!/^(expense|payment|loan_payment)$/.test(type) || !/^\d+$/.test(id) || !/^(approve|hold|reject)$/.test(action)) {
+  const validId = isDemoMode() ? /^\d+$/.test(id) : /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  if (!/^(expense|payment|loan_payment)$/.test(type) || !validId || !/^(approve|hold|reject)$/.test(action)) {
     return noStoreJson({ error: "إجراء غير صالح." }, { status: 400 });
   }
   const parsed = adminActionSchema.safeParse(await request.json().catch(() => null));
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/adm
   try {
     const transaction = isDemoMode()
       ? transitionDemoTransaction(type, Number(id), action as "approve" | "hold" | "reject", parsed.data.note)
-      : await transitionAdminTransaction(auth.session.memberId, type, Number(id), action, parsed.data.note);
+      : await transitionAdminTransaction(auth.session.memberId, type, id, action, parsed.data.note);
     if (!transaction) return noStoreJson({ error: "لا يمكن تغيير حالة العملية." }, { status: 409 });
     return noStoreJson({ transaction });
   } catch (cause) {
