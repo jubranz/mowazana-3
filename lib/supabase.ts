@@ -24,7 +24,7 @@ export async function supabaseServer() {
 
 export function supabaseAdmin() {
   const { url } = config();
-  const key = process.env.INTERNAL_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = process.env.PRIVATE_SUPABASE_SERVICE_ROLE_KEY || process.env.INTERNAL_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
