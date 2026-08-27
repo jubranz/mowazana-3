@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Image from "next/image";
 import {
   ArrowLeft,
@@ -44,7 +44,7 @@ import type {
   TransactionStatus,
 } from "@/lib/types";
 
-type Screen = "loading" | "profiles" | "pin" | "dashboard" | "loans" | "notifications" | "admin" | "managerMembers";
+type Screen = "loading" | "profiles" | "dashboard" | "loans" | "notifications" | "admin" | "managerMembers";
 type SheetKind = "expense" | "payment" | "loanPayment" | null;
 
 interface BeforeInstallPromptEvent extends Event {
@@ -109,8 +109,8 @@ async function readJson<T>(response: Response): Promise<T> {
 export function MuwazanaApp() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [profiles, setProfiles] = useState<MemberProfile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState<MemberProfile | null>(null);
-  const [pin, setPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [linkSent, setLinkSent] = useState(false);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [managerProfiles, setManagerProfiles] = useState<MemberProfile[]>([]);
   const [previewMemberId, setPreviewMemberId] = useState<number | null>(null);
@@ -218,41 +218,32 @@ export function MuwazanaApp() {
     return () => window.clearTimeout(timer);
   }, [dashboard, loadTransactions, screen, transactionPage, transactionTab]);
 
-  async function submitPin(value: string) {
-    if (!selectedProfile || value.length !== 6 || busy) return;
+  async function sendMagicLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!email || busy) return;
     setBusy(true);
     setError("");
     try {
       await readJson(
-        await fetch("/api/auth/pin", {
+        await fetch("/api/auth/link", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ profileId: selectedProfile.id, pin: value }),
+          body: JSON.stringify({ email }),
         }),
       );
-      await loadDashboard(true);
+      setLinkSent(true);
     } catch (cause) {
-      setPin("");
-      setError(cause instanceof Error ? cause.message : "الرمز غير صحيح.");
+      setError(cause instanceof Error ? cause.message : "تعذر إرسال رابط الدخول.");
     } finally {
       setBusy(false);
     }
   }
 
-  function pressPin(key: string) {
-    setError("");
-    if (key === "back") return setPin((value) => value.slice(0, -1));
-    if (pin.length >= 6 || busy) return;
-    const next = `${pin}${key}`;
-    setPin(next);
-    if (next.length === 6) window.setTimeout(() => void submitPin(next), 120);
-  }
-
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     setDashboard(null);
-    setSelectedProfile(null);
-    setPin("");
+    setEmail("");
+    setLinkSent(false);
     setPreviewMemberId(null);
     await loadProfiles();
   }
@@ -315,54 +306,21 @@ export function MuwazanaApp() {
         <BrandMark />
         <section className="auth-card profile-card">
           <div className="eyebrow"><ShieldCheck size={16} /> مساحة عائلية خاصة</div>
-          <h1>أهلًا، من أنت؟</h1>
-          <p className="muted">اختر بطاقتك للدخول إلى حسابك.</p>
+          <h1>أهلًا بك</h1>
+          <p className="muted">أدخل بريدك الإلكتروني لنرسل لك رابط دخول آمن.</p>
           {error && <Alert message={error} />}
-          <div className="profile-grid">
-            {profiles.map((profile) => (
-              <button
-                className="profile-button"
-                key={profile.id}
-                onClick={() => {
-                  setSelectedProfile(profile);
-                  setPin("");
-                  setError("");
-                  setScreen("pin");
-                }}
-              >
-                <span className="profile-avatar" style={{ background: profile.color }}>{profile.initials}</span>
-                <span>{profile.name}</span>
-                <ChevronLeft size={18} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-          {demo && <div className="demo-note">نسخة العرض: رمز الدخول <bdi>123456</bdi></div>}
+          <form className="admin-form" onSubmit={sendMagicLink}>
+            <label><span>البريد الإلكتروني</span><input required type="email" dir="ltr" value={email} onChange={(event) => { setEmail(event.target.value); setLinkSent(false); }} placeholder="name@example.com" /></label>
+            <div className="wide form-submit-row"><button className="primary-button" disabled={busy || !email}>{busy ? "جارٍ الإرسال…" : "إرسال رابط الدخول"}</button></div>
+          </form>
+          {linkSent && <div className="demo-note">إذا كان البريد مسجّلًا، أرسلنا إليه رابط الدخول. افحص صندوق الوارد والبريد غير الهام.</div>}
+          {!profiles.length && !demo && <p className="muted">سيضيف المدير حسابات الأعضاء من لوحة الإدارة.</p>}
         </section>
         <p className="auth-footnote">بياناتك محمية ولا تُحفظ على هذا الجهاز.</p>
       </main>
     );
   }
 
-  if (screen === "pin" && selectedProfile) {
-    return (
-      <main className="auth-shell pin-shell">
-        <button className="back-button" onClick={() => setScreen("profiles")} aria-label="العودة لاختيار العضو">
-          <ArrowLeft size={20} /> تغيير العضو
-        </button>
-        <section className="auth-card pin-card">
-          <span className="profile-avatar pin-avatar" style={{ background: selectedProfile.color }}>{selectedProfile.initials}</span>
-          <h1>مرحبًا {selectedProfile.name}</h1>
-          <p className="muted">أدخل رمزك المكوّن من 6 أرقام</p>
-          <div className="pin-dots" aria-label={`${pin.length} أرقام مدخلة`}>
-            {Array.from({ length: 6 }, (_, index) => <span className={index < pin.length ? "filled" : ""} key={index} />)}
-          </div>
-          {error && <Alert message={error} />}
-          <NumericPad mode="pin" onKey={pressPin} disabled={busy} />
-          {busy && <p className="checking">جارٍ التحقق…</p>}
-        </section>
-      </main>
-    );
-  }
 
   if (screen === "managerMembers") {
     return (
