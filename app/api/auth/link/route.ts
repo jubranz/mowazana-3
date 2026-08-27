@@ -29,5 +29,8 @@ export async function POST(request: NextRequest) {
     const { error } = await admin.auth.signInWithOtp({ email, options: { emailRedirectTo: `${origin}/api/auth/callback`, shouldCreateUser: false } });
     if (error) throw error;
     return noStoreJson({ ok: true });
-  } catch { return noStoreJson({ error: "تعذر إرسال رابط الدخول الآن." }, { status: 503 }); }
+  } catch (cause) {
+    console.error("Magic-link delivery failed", cause);
+    return noStoreJson({ error: "تعذر إرسال رابط الدخول الآن." }, { status: 503 });
+  }
 }
