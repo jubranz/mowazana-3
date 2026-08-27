@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     if (!data && !(process.env.INITIAL_MANAGER_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase()).includes(email)) {
       return noStoreJson({ ok: true }); // Do not disclose whether a member exists.
     }
-    const origin = new URL(process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin).origin;
+    const origin = new URL(process.env.INTERNAL_APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim() || request.nextUrl.origin).origin;
     const { error } = await admin.auth.signInWithOtp({ email, options: { emailRedirectTo: `${origin}/api/auth/callback`, shouldCreateUser: Boolean(!data) } });
     if (error) throw error;
     return noStoreJson({ ok: true });
