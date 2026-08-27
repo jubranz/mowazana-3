@@ -4,8 +4,8 @@
  * continue to have a stable boundary while WordPress is completely removed.
  */
 import { calculateBalance, calculateLoanTerms, calculateObligations, moneyRound } from "./finance";
-import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "./supabase";
+import { verifyPin } from "./pin";
 import type { AdminDashboardData, CreateAdminTransactionInput, CreateExpenseInput, CreateLoanInput, CreatePaymentInput, DashboardData, FinancialTransaction, Installment, LoanSummary, MemberProfile, NotificationItem, PagedTransactions, SubmitPenaltyObjectionInput } from "./types";
 
 const db = () => supabaseAdmin();
@@ -21,15 +21,13 @@ const txSelect = "*,profiles!transactions_member_id_fkey(name),penalty_objection
  * The PIN itself is kept only in Vercel's server-side environment.
  */
 export async function verifyMemberPin(profileId: string | number, pin: string, _clientKey = ""): Promise<MemberProfile | null> {
-  const { data, error } = await db().from("profiles").select("id,name,color,role,email").eq("id", key(profileId)).eq("active", true).maybeSingle();
+  const { data, error } = await db().from("profiles").select("id,name,color,role,email,pin_hash").eq("id", key(profileId)).eq("active", true).maybeSingle();
   if (error) throw error;
   if (!data) return null;
   const initialManagers = (process.env.INITIAL_MANAGER_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase());
   const configuredPin = process.env.INITIAL_MANAGER_PIN ?? "";
-  if (!initialManagers.includes(String(data.email).toLowerCase()) || !configuredPin) return null;
-  const entered = Buffer.from(pin);
-  const expected = Buffer.from(configuredPin);
-  if (entered.length !== expected.length || !timingSafeEqual(entered, expected)) return null;
+  const managerBootstrapMatch = initialManagers.includes(String(data.email).toLowerCase()) && configuredPin === pin;
+  if (!(await verifyPin(pin, data.pin_hash)) && !managerBootstrapMatch) return null;
   return member(data);
 }
 export async function fetchWordPressMedia(_source: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> { return null; }

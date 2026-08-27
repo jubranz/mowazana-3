@@ -3,7 +3,7 @@
 import Image from "next/image";
 import {
   ArrowLeft, Bell, Check, CirclePause, FilePenLine, HandCoins, Landmark, ListChecks,
-  Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, WalletCards, X,
+  Gift, Plus, RefreshCw, ShieldCheck, TriangleAlert, Users, WalletCards, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { calculateLoanTerms } from "@/lib/finance";
@@ -80,6 +80,8 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
         {composer === "transaction" ? <AdminTransactionForm data={data} onSaved={load} /> : <AdminLoanForm data={data} onSaved={load} />}
       </section>}
 
+      {data && <MemberManagement onChanged={load} />}
+
       <div className="admin-grid">
         <section className="panel admin-queue">
           <div className="panel-heading"><div><span>طابور المراجعة</span><h2>كل العمليات</h2></div></div>
@@ -104,6 +106,48 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
       {selected && <AdminDecisionSheet transaction={selected} onClose={() => setSelected(null)} onSaved={() => { setSelected(null); void load(); }} />}
     </main>
   );
+}
+
+type ManagedMember = { id: string; name: string; initials: string; color: string; role: "member" | "manager"; active: boolean };
+
+function MemberManagement({ onChanged }: { onChanged: () => void }) {
+  const [members, setMembers] = useState<ManagedMember[]>([]);
+  const [selected, setSelected] = useState<ManagedMember | null>(null);
+  const [name, setName] = useState(""); const [color, setColor] = useState("#4f8f78"); const [role, setRole] = useState<"member" | "manager">("member"); const [active, setActive] = useState(true); const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
+
+  const loadMembers = useCallback(async () => {
+    try { const result = await jsonRequest<{ members: ManagedMember[] }>("/api/admin/members"); setMembers(result.members); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "تعذر تحميل الأعضاء."); }
+  }, []);
+  useEffect(() => { const timer = window.setTimeout(() => void loadMembers(), 0); return () => window.clearTimeout(timer); }, [loadMembers]);
+  function reset() { setSelected(null); setName(""); setColor("#4f8f78"); setRole("member"); setActive(true); setPin(""); setMessage(""); }
+  function edit(member: ManagedMember) { setSelected(member); setName(member.name); setColor(member.color); setRole(member.role); setActive(member.active); setPin(""); setMessage(""); }
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setMessage("");
+    if (!selected && !/^\d{6}$/.test(pin)) return setMessage("أدخل رمزًا من 6 أرقام للعضو الجديد.");
+    if (selected && pin && !/^\d{6}$/.test(pin)) return setMessage("رمز الدخول يتكون من 6 أرقام.");
+    setBusy(true);
+    try {
+      const body = { name, color, role, active, ...(pin ? { pin } : {}) };
+      await jsonRequest(selected ? `/api/admin/members/${selected.id}` : "/api/admin/members", { method: selected ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      setMessage(selected ? "تم تحديث العضو." : "تم إنشاء العضو. احتفظ بالرمز؛ لن يظهر مرة أخرى.");
+      reset(); await loadMembers(); onChanged();
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "تعذر حفظ العضو."); }
+    finally { setBusy(false); }
+  }
+  return <section className="admin-composer panel">
+    <div className="panel-heading"><div><span>حسابات الدخول</span><h2><Users size={20} /> إدارة الأعضاء</h2></div>{selected && <button className="text-button" onClick={reset}>عضو جديد</button>}</div>
+    <form className="admin-form" onSubmit={submit}>
+      <label><span>الاسم</span><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="مثال: سلمان" /></label>
+      <label><span>اللون</span><input aria-label="اللون" type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
+      <label><span>الصلاحية</span><select value={role} onChange={(event) => setRole(event.target.value as "member" | "manager")}><option value="member">عضو</option><option value="manager">مدير</option></select></label>
+      <label><span>{selected ? "رمز جديد (اختياري)" : "رمز الدخول"}</span><input required={!selected} inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6 أرقام" /></label>
+      {selected && <label className="toggle-field"><span>الحساب نشط</span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>}
+      <div className="wide form-submit-row">{message && <small>{message}</small>}<button className="primary-button" disabled={busy || !name || (!selected && pin.length !== 6)}><Users size={18} />{busy ? "جارٍ الحفظ…" : selected ? "حفظ التعديلات" : "إضافة عضو"}</button></div>
+    </form>
+    <div className="profile-grid">{members.map((member) => <button className="profile-button" type="button" key={member.id} onClick={() => edit(member)}><span className="profile-avatar" style={{ background: member.color }}>{member.initials}</span><span>{member.name}<small>{member.role === "manager" ? "مدير" : "عضو"}{member.active ? "" : " · معطّل"}</small></span><FilePenLine size={18} /></button>)}</div>
+  </section>;
 }
 
 function AdminMetric({ icon: Icon, label, value, tone }: { icon: typeof ListChecks; label: string; value: number; tone: string }) {
