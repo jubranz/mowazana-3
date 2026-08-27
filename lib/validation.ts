@@ -6,7 +6,7 @@ const optionalText = z.string().trim().max(240).optional().default("");
 const optionalDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
 
 export const pinLoginSchema = z.object({
-  profileId: z.number().int().positive(),
+  profileId: z.union([z.string().uuid(), z.number().int().positive()]),
   pin: z.string().regex(/^\d{6}$/),
 });
 

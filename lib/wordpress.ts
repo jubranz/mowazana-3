@@ -4,6 +4,7 @@
  * continue to have a stable boundary while WordPress is completely removed.
  */
 import { calculateBalance, calculateLoanTerms, calculateObligations, moneyRound } from "./finance";
+import { timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "./supabase";
 import type { AdminDashboardData, CreateAdminTransactionInput, CreateExpenseInput, CreateLoanInput, CreatePaymentInput, DashboardData, FinancialTransaction, Installment, LoanSummary, MemberProfile, NotificationItem, PagedTransactions, SubmitPenaltyObjectionInput } from "./types";
 
@@ -14,7 +15,23 @@ const member = (row: any): MemberProfile => ({ id: row.id, name: row.name, initi
 const item = (row: any): FinancialTransaction => ({ id: row.id, memberId: row.member_id, memberName: row.profiles?.name, type: row.type, title: row.title, amount: Number(row.amount), date: row.occurred_at, status: row.status, note: row.note ?? undefined, managerNote: row.manager_note ?? undefined, loanId: row.loan_id ?? undefined, installmentId: row.installment_id ?? undefined, imageUrl: row.evidence_path ? `/api/me/penalties/${row.id}/image` : undefined, objectionStatus: row.penalty_objections?.[0]?.status ?? "none", objectionText: row.penalty_objections?.[0]?.text, objectionDeadline: row.penalty_objections?.[0]?.deadline_at });
 const txSelect = "*,profiles!transactions_member_id_fkey(name),penalty_objections(*)";
 
-export async function verifyMemberPin(profileId: string | number, _pin: string, _clientKey = ""): Promise<MemberProfile> { const { data, error } = await db().from("profiles").select("id,name,color,role").eq("id", key(profileId)).eq("active", true).single(); if (error) throw error; return member(data); }
+/**
+ * PIN login is deliberately limited to the explicitly bootstrapped manager
+ * until the in-app member administration screen creates per-member PINs.
+ * The PIN itself is kept only in Vercel's server-side environment.
+ */
+export async function verifyMemberPin(profileId: string | number, pin: string, _clientKey = ""): Promise<MemberProfile | null> {
+  const { data, error } = await db().from("profiles").select("id,name,color,role,email").eq("id", key(profileId)).eq("active", true).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const initialManagers = (process.env.INITIAL_MANAGER_EMAILS ?? "").split(",").map((item) => item.trim().toLowerCase());
+  const configuredPin = process.env.INITIAL_MANAGER_PIN ?? "";
+  if (!initialManagers.includes(String(data.email).toLowerCase()) || !configuredPin) return null;
+  const entered = Buffer.from(pin);
+  const expected = Buffer.from(configuredPin);
+  if (entered.length !== expected.length || !timingSafeEqual(entered, expected)) return null;
+  return member(data);
+}
 export async function fetchWordPressMedia(_source: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> { return null; }
 
 export async function getProfiles(): Promise<MemberProfile[]> { const { data, error } = await db().from("profiles").select("id,name,color,role").eq("active", true).order("name"); if (error) throw error; return (data ?? []).map(member); }
