@@ -1,36 +1,26 @@
-import { cookies } from "next/headers";
-import { SignJWT, jwtVerify } from "jose";
-import { getSessionSecret } from "./env";
 import type { SessionPayload } from "./types";
+import { supabaseServer } from "./supabase";
+import { SignJWT } from "jose";
 
+/** Legacy exports kept only so stale demo routes compile; production auth uses Supabase cookies. */
 export const SESSION_COOKIE = "muwazana_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
-
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
-  return new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("30d")
-    .setIssuer("muwazana")
-    .setAudience("muwazana-member")
-    .sign(getSessionSecret());
+  return new SignJWT({ ...payload }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("30d").sign(new TextEncoder().encode(process.env.SESSION_SECRET ?? "legacy-disabled"));
 }
 
 export async function readSession(): Promise<SessionPayload | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, getSessionSecret(), {
-      issuer: "muwazana",
-      audience: "muwazana-member",
-    });
-    if (typeof payload.memberId !== "number" || typeof payload.name !== "string") return null;
+    const supabase = await supabaseServer();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data: profile } = await supabase.from("profiles").select("id, name, color, role, active").eq("id", user.id).eq("active", true).maybeSingle();
+    if (!profile) return null;
     return {
-      memberId: payload.memberId,
-      name: payload.name,
-      color: typeof payload.color === "string" ? payload.color : "#4f8f78",
-      canManage: payload.canManage === true,
+      memberId: profile.id,
+      name: profile.name,
+      color: profile.color,
+      canManage: profile.role === "manager",
     };
   } catch {
     return null;

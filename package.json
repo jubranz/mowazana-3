@@ -11,6 +11,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
     "client-only": "^0.0.1",
     "jose": "^6.2.9",
     "lucide-react": "^1.33.0",

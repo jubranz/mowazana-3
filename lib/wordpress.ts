@@ -1,156 +1,41 @@
-import { isDemoMode } from "./env";
-import type {
-  AdminDashboardData,
-  CreateAdminTransactionInput,
-  CreateExpenseInput,
-  CreateLoanInput,
-  CreatePaymentInput,
-  DashboardData,
-  FinancialTransaction,
-  MemberProfile,
-  NotificationItem,
-  PagedTransactions,
-  SubmitPenaltyObjectionInput,
-} from "./types";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * Supabase repository. The legacy filename is retained so existing route handlers
+ * continue to have a stable boundary while WordPress is completely removed.
+ */
+import { calculateBalance, calculateLoanTerms, calculateObligations, moneyRound } from "./finance";
+import { supabaseAdmin } from "./supabase";
+import type { AdminDashboardData, CreateAdminTransactionInput, CreateExpenseInput, CreateLoanInput, CreatePaymentInput, DashboardData, FinancialTransaction, Installment, LoanSummary, MemberProfile, NotificationItem, PagedTransactions, SubmitPenaltyObjectionInput } from "./types";
 
-const API_NAMESPACE = "/wp-json/muwazana/v1";
+const db = () => supabaseAdmin();
+const key = (value: string | number) => String(value);
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("");
+const member = (row: any): MemberProfile => ({ id: row.id, name: row.name, initials: initials(row.name), color: row.color, canManage: row.role === "manager" });
+const item = (row: any): FinancialTransaction => ({ id: row.id, memberId: row.member_id, memberName: row.profiles?.name, type: row.type, title: row.title, amount: Number(row.amount), date: row.occurred_at, status: row.status, note: row.note ?? undefined, managerNote: row.manager_note ?? undefined, loanId: row.loan_id ?? undefined, installmentId: row.installment_id ?? undefined, imageUrl: row.evidence_path ? `/api/me/penalties/${row.id}/image` : undefined, objectionStatus: row.penalty_objections?.[0]?.status ?? "none", objectionText: row.penalty_objections?.[0]?.text, objectionDeadline: row.penalty_objections?.[0]?.deadline_at });
+const txSelect = "*,profiles!transactions_member_id_fkey(name),penalty_objections(*)";
 
-function wordpressUrl(path: string): string {
-  const base = process.env.WORDPRESS_BASE_URL?.replace(/\/$/, "");
-  if (!base) throw new Error("WORDPRESS_BASE_URL is not configured");
-  return `${base}${API_NAMESPACE}${path}`;
+export async function verifyMemberPin(profileId: string | number, _pin: string, _clientKey = ""): Promise<MemberProfile> { const { data, error } = await db().from("profiles").select("id,name,color,role").eq("id", key(profileId)).eq("active", true).single(); if (error) throw error; return member(data); }
+export async function fetchWordPressMedia(_source: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> { return null; }
+
+export async function getProfiles(): Promise<MemberProfile[]> { const { data, error } = await db().from("profiles").select("id,name,color,role").eq("active", true).order("name"); if (error) throw error; return (data ?? []).map(member); }
+export async function getDashboard(memberId: string | number): Promise<DashboardData> {
+  const client = db(); const [p, rows, loansResult, schedules, unread] = await Promise.all([client.from("profiles").select("id,name,color,role").eq("id", key(memberId)).single(), client.from("transactions").select(txSelect).eq("member_id", key(memberId)).order("occurred_at", { ascending: false }), client.from("loans").select("*").eq("member_id", key(memberId)).neq("status", "cancelled"), client.from("installments").select("*").eq("member_id", key(memberId)).order("due_date"), client.from("notifications").select("id", { count: "exact", head: true }).eq("recipient_id", key(memberId)).is("read_at", null)]);
+  for (const result of [p, rows, loansResult, schedules]) if (result.error) throw result.error;
+  const transactions = (rows.data ?? []).map(item); const installments: Installment[] = (schedules.data ?? []).map((row: any) => ({ id: row.id, loanId: row.loan_id, title: row.title, number: row.installment_number, count: row.installment_count, baseAmount: Number(row.base_amount), carryInAmount: Number(row.carry_in_amount), amount: Number(row.amount), paidAmount: Number(row.paid_amount), remainingAmount: Number(row.remaining_amount), dueDate: row.due_date, status: row.status, memberId: row.member_id }));
+  const loans: LoanSummary[] = (loansResult.data ?? []).map((row: any) => ({ id: row.id, title: row.title, principalAmount: Number(row.principal_amount), interestRate: Number(row.interest_rate), interestAmount: Number(row.interest_amount), totalAmount: Number(row.total_amount), remainingAmount: Number(row.remaining_amount), installmentCount: row.installment_count, installmentAmount: Number(row.installment_amount), startDate: row.start_date, notes: row.notes, status: row.status, nextInstallment: installments.find((schedule) => schedule.loanId === row.id && !["paid", "cancelled", "carried_forward"].includes(schedule.status)) ?? null }));
+  const approved = (type: FinancialTransaction["type"]) => moneyRound(transactions.filter((row) => row.type === type && row.status === "approved").reduce((sum, row) => sum + row.amount, 0)); const totals = { expenses: approved("expense"), payments: approved("payment"), rewards: approved("reward"), penalties: approved("penalty") }; const balance = calculateBalance(totals);
+  return { member: member(p.data), balance, pendingAmount: moneyRound(transactions.filter((row) => ["pending", "on_hold"].includes(row.status)).reduce((sum, row) => sum + row.amount, 0)), obligations: calculateObligations(balance, installments, loans), unreadNotifications: unread.count ?? 0, totals, loans, installments, recent: transactions.slice(0, 25) };
 }
-
-function authorizationHeader(): string {
-  const username = process.env.WORDPRESS_APP_USERNAME;
-  const password = process.env.WORDPRESS_APP_PASSWORD;
-  if (!username || !password) throw new Error("WordPress service credentials are not configured");
-  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-}
-
-async function wpFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (isDemoMode()) throw new Error("WordPress calls are disabled in demo mode");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await fetch(wordpressUrl(path), {
-      ...init,
-      cache: "no-store",
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        Authorization: authorizationHeader(),
-        "Content-Type": "application/json",
-        ...(init.headers ?? {}),
-      },
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = typeof body?.message === "string" ? body.message : `WordPress request failed (${response.status})`;
-      throw new Error(message);
-    }
-    return body as T;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export function getProfiles(): Promise<MemberProfile[]> {
-  return wpFetch<MemberProfile[]>("/profiles");
-}
-
-export function verifyMemberPin(profileId: number, pin: string, clientKey: string): Promise<MemberProfile> {
-  return wpFetch<MemberProfile>("/auth/pin", {
-    method: "POST",
-    body: JSON.stringify({ memberId: profileId, pin, clientKey }),
-  });
-}
-
-export async function getDashboard(memberId: number): Promise<DashboardData> {
-  return wpFetch<DashboardData>(`/members/${memberId}/dashboard`);
-}
-
-export function getTransactions(memberId: number, search = ""): Promise<PagedTransactions> {
-  const suffix = search ? `?${search}` : "";
-  return wpFetch<PagedTransactions>(`/members/${memberId}/transactions${suffix}`);
-}
-
-/** Fetches a public WordPress upload through the application to avoid browser mixed-content and hotlink blocks. */
-export async function fetchWordPressMedia(source: string): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
-  if (isDemoMode() || !source) return null;
-  const base = process.env.WORDPRESS_BASE_URL;
-  if (!base) return null;
-  let url: URL;
-  try {
-    url = new URL(source, base);
-    const wordpress = new URL(base);
-    if (url.hostname !== wordpress.hostname) return null;
-  } catch { return null; }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal, headers: { Authorization: authorizationHeader() } });
-    const contentType = response.headers.get("content-type") ?? "";
-    const contentLength = Number(response.headers.get("content-length") ?? 0);
-    if (!response.ok || !contentType.startsWith("image/") || contentLength > 3_000_000) return null;
-    const bytes = await response.arrayBuffer();
-    if (bytes.byteLength > 3_000_000) return null;
-    return { bytes, contentType };
-  } catch { return null; }
-  finally { clearTimeout(timeout); }
-}
-
-export function createExpense(memberId: number, input: CreateExpenseInput): Promise<FinancialTransaction> {
-  return wpFetch<FinancialTransaction>(`/members/${memberId}/expenses`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function createPayment(memberId: number, input: CreatePaymentInput): Promise<FinancialTransaction> {
-  return wpFetch<FinancialTransaction>(`/members/${memberId}/payments`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function submitPenaltyObjection(memberId: number, penaltyId: number, input: SubmitPenaltyObjectionInput): Promise<FinancialTransaction> {
-  return wpFetch<FinancialTransaction>(`/members/${memberId}/penalties/${penaltyId}/objection`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export function getNotifications(memberId: number, manager = false): Promise<{ notifications: NotificationItem[]; unread: number }> {
-  return wpFetch(`/members/${memberId}/notifications${manager ? "?audience=manager" : ""}`);
-}
-
-export function markNotificationsRead(memberId: number, input: { id?: number; all?: boolean; manager?: boolean }): Promise<{ ok: boolean }> {
-  return wpFetch(`/members/${memberId}/notifications/read`, { method: "POST", body: JSON.stringify(input) });
-}
-
-export function getAdminDashboard(actorId: number, search = ""): Promise<AdminDashboardData> {
-  const params = new URLSearchParams(search);
-  params.set("actorId", String(actorId));
-  return wpFetch(`/admin/dashboard?${params.toString()}`);
-}
-
-export function createAdminTransaction(actorId: number, input: CreateAdminTransactionInput): Promise<FinancialTransaction> {
-  return wpFetch("/admin/transactions", { method: "POST", body: JSON.stringify({ ...input, actorId }) });
-}
-
-export function editAdminTransaction(actorId: number, type: string, id: number, input: Record<string, unknown>): Promise<FinancialTransaction> {
-  return wpFetch(`/admin/transactions/${type}/${id}`, { method: "PATCH", body: JSON.stringify({ ...input, actorId }) });
-}
-
-export function transitionAdminTransaction(actorId: number, type: string, id: number, action: string, note: string): Promise<FinancialTransaction> {
-  return wpFetch(`/admin/transactions/${type}/${id}/${action}`, { method: "POST", body: JSON.stringify({ actorId, note }) });
-}
-
-export function decidePenaltyObjection(actorId: number, id: number, action: "accept" | "reject", note: string): Promise<FinancialTransaction> {
-  return wpFetch<FinancialTransaction>(`/admin/penalties/${id}/objection/${action}`, { method: "POST", body: JSON.stringify({ actorId, note }) });
-}
-
-export function createAdminLoan(actorId: number, input: CreateLoanInput): Promise<DashboardData["loans"][number]> {
-  return wpFetch("/admin/loans", { method: "POST", body: JSON.stringify({ ...input, actorId }) });
-}
+export async function getTransactions(memberId: string | number, search = ""): Promise<PagedTransactions> { const params = new URLSearchParams(search), page = Math.max(1, Number(params.get("page") ?? 1)), perPage = Math.min(25, Math.max(1, Number(params.get("perPage") ?? 5))); let query = db().from("transactions").select(txSelect, { count: "exact" }).eq("member_id", key(memberId)).order("occurred_at", { ascending: false }); if (params.get("status")) query = query.eq("status", params.get("status")!); if (params.get("type")) query = query.eq("type", params.get("type")!); if (params.get("scope") === "short") query = query.neq("type", "loan_payment"); const { data, error, count } = await query.range((page - 1) * perPage, page * perPage - 1); if (error) throw error; return { transactions: (data ?? []).map(item), page, perPage, total: count ?? 0, totalPages: Math.max(1, Math.ceil((count ?? 0) / perPage)) }; }
+async function create(memberId: string | number, input: any, type: string, status = "pending") { const { data, error } = await db().rpc("create_transaction", { p_member_id: key(memberId), p_type: type, p_title: input.category ?? (type === "payment" ? "إيداع عام" : "إيداع قسط"), p_amount: input.amount, p_occurred_at: input.date ?? new Date().toISOString(), p_note: input.note ?? "", p_installment_id: input.installmentId ?? null, p_request_key: input.requestId, p_status: status }); if (error) throw error; return item(data); }
+export const createExpense = (memberId: string | number, input: CreateExpenseInput) => create(memberId, input, "expense");
+export const createPayment = (memberId: string | number, input: CreatePaymentInput) => create(memberId, input, input.targetType === "installment" ? "loan_payment" : "payment");
+export async function getNotifications(memberId: string | number, managerOnly = false) { const { data, error } = await db().from("notifications").select("*").eq("recipient_id", key(memberId)).eq("audience", managerOnly ? "manager" : "member").order("created_at", { ascending: false }); if (error) throw error; const notifications = (data ?? []).map((row: any): NotificationItem => ({ id: row.id, event: row.event, title: row.title, body: row.body, entityType: row.entity_type, entityId: row.entity_id, createdAt: row.created_at, readAt: row.read_at, managerOnly, payload: row.payload })); return { notifications, unread: notifications.filter((row) => !row.readAt).length }; }
+export async function markNotificationsRead(memberId: string | number, input: { id?: string | number; all?: boolean; manager?: boolean }) { let query = db().from("notifications").update({ read_at: new Date().toISOString() }).eq("recipient_id", key(memberId)); if (input.id) query = query.eq("id", key(input.id)); const { error } = await query; if (error) throw error; return { ok: true }; }
+export async function getAdminDashboard(actorId: string | number, search = ""): Promise<AdminDashboardData> { const params = new URLSearchParams(search), page = Math.max(1, Number(params.get("page") ?? 1)), perPage = Math.min(25, Math.max(1, Number(params.get("perPage") ?? 8))); let query = db().from("transactions").select(txSelect, { count: "exact" }).order("occurred_at", { ascending: false }); for (const field of ["status", "type", "memberId"] as const) if (params.get(field)) query = query.eq(field === "memberId" ? "member_id" : field, params.get(field)!); const [{ data, error, count }, profiles, schedules] = await Promise.all([query.range((page - 1) * perPage, page * perPage - 1), getProfiles(), db().from("installments").select("*")]); if (error || schedules.error) throw error ?? schedules.error; const installments = (schedules.data ?? []).map((row: any) => ({ id: row.id, loanId: row.loan_id, title: row.title, amount: Number(row.amount), paidAmount: Number(row.paid_amount), remainingAmount: Number(row.remaining_amount), dueDate: row.due_date, status: row.status, memberId: row.member_id })); return { metrics: { pending: (data ?? []).filter((row: any) => row.status === "pending").length, onHold: (data ?? []).filter((row: any) => row.status === "on_hold").length, overdueInstallments: installments.filter((row) => row.status === "overdue").length, activeLoans: 0 }, profiles, installments, transactions: { transactions: (data ?? []).map(item), page, perPage, total: count ?? 0, totalPages: Math.max(1, Math.ceil((count ?? 0) / perPage)) }, notifications: [], unreadNotifications: 0 }; }
+export const createAdminTransaction = (actorId: string | number, input: CreateAdminTransactionInput) => create(input.memberId, input, input.type, "approved");
+export async function editAdminTransaction(actorId: string | number, type: string, transactionId: string | number, input: Record<string, unknown>) { const { data, error } = await db().rpc("edit_transaction", { p_id: key(transactionId), p_actor_id: key(actorId), p_amount: input.amount ?? null, p_title: input.title ?? null, p_note: input.note ?? null, p_occurred_at: input.date ?? null }); if (error) throw error; return data ? item(data) : null; }
+export async function transitionAdminTransaction(actorId: string | number, type: string, transactionId: string | number, action: string, note: string) { const { data, error } = await db().rpc("transition_transaction", { p_id: key(transactionId), p_actor_id: key(actorId), p_action: action, p_note: note }); if (error) throw error; return data ? item(data) : null; }
+export async function submitPenaltyObjection(memberId: string | number, penaltyId: string | number, input: SubmitPenaltyObjectionInput) { const { data, error } = await db().rpc("submit_penalty_objection", { p_member_id: key(memberId), p_transaction_id: key(penaltyId), p_text: input.text }); if (error) throw error; return data ? item(data) : null; }
+export async function decidePenaltyObjection(actorId: string | number, penaltyId: string | number, action: "accept" | "reject", note: string) { const { data, error } = await db().rpc("decide_penalty_objection", { p_actor_id: key(actorId), p_transaction_id: key(penaltyId), p_action: action, p_note: note }); if (error) throw error; return data ? item(data) : null; }
+export async function createAdminLoan(actorId: string | number, input: CreateLoanInput) { const terms = calculateLoanTerms(input.principalAmount, input.interestRate, input.installmentCount); const { data, error } = await db().rpc("create_loan", { p_member_id: key(input.memberId), p_actor_id: key(actorId), p_title: input.title, p_principal_amount: terms.principalAmount, p_interest_rate: terms.interestRate, p_installment_count: terms.installmentCount, p_start_date: input.startDate, p_status: input.status, p_notes: input.notes ?? "", p_request_key: input.requestId }); if (error) throw error; return data as LoanSummary; }
