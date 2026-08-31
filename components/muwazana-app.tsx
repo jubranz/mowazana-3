@@ -113,7 +113,8 @@ export function MuwazanaApp() {
   const [pin, setPin] = useState("");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [managerProfiles, setManagerProfiles] = useState<MemberProfile[]>([]);
-  const [previewMemberId, setPreviewMemberId] = useState<number | null>(null);
+  // Production profiles use Supabase UUIDs; the local demo keeps numeric IDs.
+  const [previewMemberId, setPreviewMemberId] = useState<string | number | null>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [paymentLoanId, setPaymentLoanId] = useState<number | null>(null);
   const [paymentInstallmentId, setPaymentInstallmentId] = useState<number | null>(null);
@@ -128,7 +129,7 @@ export function MuwazanaApp() {
   const [transactionsBusy, setTransactionsBusy] = useState(false);
   const transactionsPerPage = 5;
 
-  const loadDashboard = useCallback(async (silent = false, targetMemberId?: number | null) => {
+  const loadDashboard = useCallback(async (silent = false, targetMemberId?: string | number | null) => {
     if (!silent) setBusy(true);
     try {
       const viewedMemberId = targetMemberId === undefined ? previewMemberId : targetMemberId;
